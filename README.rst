@@ -1,89 +1,87 @@
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Sample plugin for ofxstatement
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Consorsbank plugin for ofxstatement
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This project provides a boilerplate for custom plugins for ofxstatement.
+Converts **Consorsbank** (BNP Paribas Germany) PDF bank statements to OFX
+format for import into GnuCash or other personal finance software.
 
-`ofxstatement`_ is a tool to convert proprietary bank statement to OFX format,
-suitable for importing to GnuCash. Plugin for ofxstatement parses a
-particular proprietary bank statement format and produces common data
-structure, that is then formatted into an OFX file.
+`ofxstatement`_ is a tool to convert proprietary bank statements to OFX format.
 
 .. _ofxstatement: https://github.com/kedder/ofxstatement
 
 
-Users of ofxstatement have developed several plugins for their banks. They are
-listed on main `ofxstatement`_ site. If your bank is missing, you can develop
-your own plugin.
+Supported statement types
+=========================
 
-Setting up development environment
-==================================
+* **Girokonto** (current account)
+* **Tagesgeldkonto** (savings account)
 
-It is recommended to use ``pipenv`` to make a clean development environment.
-Setting up dev environment for writing a plugin is easy::
+The plugin parses the standard PDF exported from the Consorsbank online portal.
+The PDF must have a text layer (i.e. not a scanned image); all PDFs downloaded
+directly from the portal qualify.
 
-  $ git clone https://github.com/kedder/ofxstatement-sample ofxstatement-yourbank
-  $ cd ofxstatement-yourbank
-  $ pipenv sync --dev
-  $ pipenv shell
+Transaction types handled:
 
-This will download all the dependencies and install them into your virtual
-environment. After this, you should be able to do::
-
-  $ ofxstatement list-plugins
-  The following plugins are available:
-
-    sample           Sample plugin (for developers only)
+* LASTSCHRIFT (direct debit) — including VISA card charges (PNNr 8999)
+* EURO-UEBERW. (SEPA credit transfer, debit and credit)
+* GIROCARD (debit card)
+* DAUERAUFTRAG (standing order)
+* GEHALT/RENTE (salary / pension)
+* GEBUEHREN / ENTGELT (fees and charges)
+* GUTSCHRIFT (credit)
 
 
+Installation
+============
 
-Your own plugin
-===============
+::
 
-To create your own plugin, follow these steps:
+  $ pip install ofxstatement-consorsbank
 
-* Edit ``pyproject.toml`` and provide relevant metadata for your plugin.  Pay close
-  attention to ``project.entry-points`` section: it lists plugins you are registering
-  within ofxstatement. Give meaningful name to the plugin and reference your plugin
-  class name.
-* Replace contents of ``README.rst`` with description of your plugin
-* Rename the project name (``ofxstatement_sample``) to match plugin package name you
-  have provided in ``entry_points`` parameter.
-* Open the ``plugin.py`` and rename ``SamplePlugin`` and ``SampleParser``
-  classes to match your plugin class name.
-* Now, draw the rest of the owl (c).
+Or from source::
 
-.. _ofxstatement-sample: https://github.com/kedder/ofxstatement-sample
+  $ git clone https://github.com/eduralph/ofxstatement-consorsbank
+  $ cd ofxstatement-consorsbank
+  $ python -m venv .venv
+  $ .venv/bin/pip install -e .
 
-Your ``StatementParser`` is the main object that does all the hard work. It
-has only one public method: ``parse()``, that should return
-``ofxstatement.statement.Statement`` object, filled with data from given input.
-The default implementation, however, splits this work into two parts:
-``split_records()`` to split the whole file into logical parts, e.g.
-transaction records, and ``parse_record()`` to extract information from
-individual record. See ``src/ofxstatement/parser.py`` for details. If your
-statement' format looks like CSV file, you might find ``CsvStatementParser``
-class useful: it simplifies mapping bettween CSV columns and ``StatementLine``
-attributes.
 
-``Plugin`` interface consists only of ``get_parser()`` method, that returns
-configured StatementParser object for given input filename. Docstrings on
-Plugin class is also useful for describing the purpose of your plugin. First
-line of it is visible in ``ofxstatement list-plugins`` output.
+Usage
+=====
 
-Testing
-=======
+::
 
-Test your code as you would do with any other project.  To make sure
-ofxstatement is still able to load your plugin, run::
+  $ ofxstatement convert -t consorsbank statement.pdf statement.ofx
 
-  (.venv)$ ofxstatement list-plugins
+The output file uses your IBAN as the account ID, so GnuCash will
+automatically associate it with the correct account on re-import.
 
-You should be able to see your plugin listed.
 
-After you are done
-==================
+Development setup
+=================
 
-After your plugin is ready, feel free to open an issue on `ofxstatement`_
-project to include your plugin in "known plugin list". That would hopefully
-make life of other clients of your bank easier.
+::
+
+  $ python -m venv .venv
+  $ .venv/bin/pip install -e ".[dev]"
+
+Run the unit tests::
+
+  $ .venv/bin/pytest tests/
+
+To run the full integration test, place a real statement PDF at
+``tests/statement.pdf`` and run::
+
+  $ .venv/bin/pytest tests/ -v
+
+To inspect the raw pdfplumber text extraction alongside the parsed
+transactions::
+
+  $ .venv/bin/python debug_pdf.py tests/statement.pdf
+
+
+Status
+======
+
+Early development — tested against January 2026 Girokonto statements.
+Feedback and pull requests welcome.
