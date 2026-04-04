@@ -251,6 +251,80 @@ def test_all_dates_in_range(statement):
         assert 1 <= sl.date.month <= 12
 
 
+# ── ATM cash withdrawal detection ─────────────────────────────────────────────
+#
+# Cash withdrawals at another bank's ATM appear as LASTSCHRIFT but use:
+#   - BLZ counterparty format  < 760 300 80 >  instead of  <BIC>
+#   - VISA card reference with SB suffix (Selbstbedienung = ATM)
+# The parser must override DIRECTDEBIT → ATM for these.
+
+PAGE_ATM = """\
+Kontonummer 0000099999
+Kontotyp Girokonto
+Kontoinhaber Test User
+Soll Haben
+Buchungssaldo alt 1.000,00+
+Buchungssaldo neu 950,00+
+Kontostand zum 31.07.16
+950,00+
+Kontoauszug 7 Konto-Nr. 0000099999 Blatt 1 / 1
+Datum 31.07.16 Bankleitzahl 123 456 78 Kontowährung EUR
+BIC TESTDE71XXX
+IBAN DE00123456780000099999
+Text/Verwendungszweck Datum PNNr Wert Soll Haben
+LASTSCHRIFT 06.07. 8421 06.07. 50,00-
+MUSTER SPARKASSE TESTSTADT
+< 123 456 78 > 000000001
+VISA00000001SB TESTPLATZ
+50,00EUR0,0000000000 04.07.
+50,00 10316011
+*** Kontostand zum 06.07. *** 950,00+
+"""
+
+
+def test_atm_withdrawal_typed_as_atm():
+    with patch("pdfplumber.open", return_value=_make_mock_pdf([PAGE_ATM])):
+        stmt = ConsorsParser("fake_atm.pdf").parse()
+    assert len(stmt.lines) == 1
+    txn = stmt.lines[0]
+    assert txn.ttype == "ATM"
+    assert txn.amount == Decimal("-50.00")
+    assert txn.payee == "MUSTER SPARKASSE TESTSTADT"
+
+
+def test_atm_withdrawal_sb_terminal_number():
+    # ATM where the only indicator is "SB <n>" in the payee name (no BLZ line, no VISA...SB)
+    page = PAGE_ATM.replace(
+        "MUSTER SPARKASSE TESTSTADT\n< 123 456 78 > 000000001\nVISA00000001SB TESTPLATZ\n50,00EUR0,0000000000 04.07.\n50,00 10316011",
+        "MUSTER VR BANK TESTSTADT SB 30",
+    )
+    with patch("pdfplumber.open", return_value=_make_mock_pdf([page])):
+        stmt = ConsorsParser("fake_atm_sb.pdf").parse()
+    assert len(stmt.lines) == 1
+    assert stmt.lines[0].ttype == "ATM"
+
+
+def test_atm_withdrawal_pnnr8999_bank_payee():
+    # PNNr 8999 + bank name payee → ATM, not POS
+    # "VR BANK A-OAL VRB-A-OAL 276" style: no SB terminal, no BLZ format
+    page = PAGE_ATM.replace(
+        "LASTSCHRIFT 06.07. 8421 06.07. 50,00-\nMUSTER SPARKASSE TESTSTADT\n< 123 456 78 > 000000001\nVISA00000001SB TESTPLATZ\n50,00EUR0,0000000000 04.07.\n50,00 10316011",
+        "LASTSCHRIFT 27.01. 8999 27.01. 100,00-\nTEST VR BANK TESTORT VRB-T-OAL 276\nVISA 00000001 VRB-T-OAL\n100,00 EUR 24.01. 10316011",
+    )
+    with patch("pdfplumber.open", return_value=_make_mock_pdf([page])):
+        stmt = ConsorsParser("fake_atm_bank.pdf").parse()
+    assert len(stmt.lines) == 1
+    txn = stmt.lines[0]
+    assert txn.ttype == "ATM"
+    assert txn.amount == Decimal("-100.00")
+
+
+def test_atm_blz_pattern_not_matched_by_regular_lastschrift(statement):
+    # Regular LASTSCHRIFT (direct debit with BIC) must stay DIRECTDEBIT
+    txn = statement.lines[1]   # Signal Versicherung — uses <BIC> IBAN format
+    assert txn.ttype == "DIRECTDEBIT"
+
+
 # ── Tagesgeldkonto account type ────────────────────────────────────────────────
 
 def test_account_type_tagesgeldkonto():
@@ -259,3 +333,117 @@ def test_account_type_tagesgeldkonto():
         parser = ConsorsParser("fake.pdf")
         stmt = parser.parse()
     assert stmt.account_type == "SAVINGS"
+
+
+# ── Tagesgeldkonto single-page statement (mirrors real PDF layout) ─────────────
+#
+# D-GUTSCHRIFT is a standing-order credit between own accounts — ttype XFER.
+# The real PDF has BIC/IBAN on separate lines below the "Kontoauszug N" header,
+# which pdfplumber emits as individual text lines.
+
+PAGE_TAGESGELD = """\
+Kontonummer 0000088888
+Kontotyp Tagesgeldkonto
+Kontoinhaber Test User
+Soll Haben
+Buchungssaldo alt 28.366,88+
+Buchungssaldo neu 28.816,88+
+Kontostand zum 31.10.25
+28.816,88+
+Kontoauszug 10 Konto-Nr. 0000088888 Blatt 1 / 1
+Datum 31.10.25 Bankleitzahl 123 456 78 Kontowährung EUR
+BIC TESTDE71XXX
+IBAN DE00123456780000088888
+Text/Verwendungszweck Datum PNNr Wert Soll Haben
+D-GUTSCHRIFT NR.0000009 31.10. 8422 31.10. 450,00+
+Test User
+<TESTDE71XXX> DE00123456780000099999
+Ruecklagen jaehrliche Ausgaben
+*** Kontostand zum 31.10. *** 28.816,88+
+"""
+
+
+@pytest.fixture(scope="module")
+def tagesgeld_statement():
+    with patch("pdfplumber.open", return_value=_make_mock_pdf([PAGE_TAGESGELD])):
+        parser = ConsorsParser("fake_tagesgeld.pdf")
+        return parser.parse()
+
+
+def test_tagesgeld_account_type(tagesgeld_statement):
+    assert tagesgeld_statement.account_type == "SAVINGS"
+
+def test_tagesgeld_iban(tagesgeld_statement):
+    assert tagesgeld_statement.account_id == "DE00123456780000088888"
+
+def test_tagesgeld_transaction_count(tagesgeld_statement):
+    assert len(tagesgeld_statement.lines) == 1
+
+def test_tagesgeld_d_gutschrift_type(tagesgeld_statement):
+    txn = tagesgeld_statement.lines[0]
+    assert txn.ttype == "XFER"
+    assert txn.amount == Decimal("450.00")
+    assert txn.date == datetime(2025, 10, 31)
+    assert "NR.0000009" in txn.memo
+
+
+# ── Verrechnungskonto (securities settlement account) ─────────────────────────
+#
+# ZINS/DIVID. = dividend/interest credit (ttype DIV)
+# EFFEKTEN    = securities purchase debit (ttype DEBIT)
+# Kontotyp Verrechnungskonto → account_type MONEYMRKT
+
+PAGE_VERRECHNUNGSKONTO = """\
+Kontonummer 0000077777
+Kontotyp Verrechnungskonto
+Kontoinhaber Test User
+Soll Haben
+Buchungssaldo alt 0,00+
+Buchungssaldo neu 0,00+
+Kontostand zum 31.12.25
+0,00+
+Kontoauszug 11 Konto-Nr. 0000077777 Blatt 1 / 1
+Datum 31.12.25 Bankleitzahl 123 456 78 Kontowährung EUR
+BIC TESTDE71XXX
+IBAN DE00123456780000077777
+Text/Verwendungszweck Datum PNNr Wert Soll Haben
+ZINS/DIVID. 04.12. 8809 04.12. 42,49+
+TEST.INDEX FUND 1D
+WKN: TEST01
+*** Kontostand zum 04.12. *** 42,49+
+EFFEKTEN NR.0000000000001 05.12. 8808 09.12. 42,49-
+SPARPLAN 0000000000001
+Kauf WKN: TEST01
+TEST.INDEX FUND 1D
+*** Kontostand zum 09.12. *** 0,00+
+"""
+
+
+@pytest.fixture(scope="module")
+def verrechnungskonto_statement():
+    with patch("pdfplumber.open", return_value=_make_mock_pdf([PAGE_VERRECHNUNGSKONTO])):
+        parser = ConsorsParser("fake_verrechnungskonto.pdf")
+        return parser.parse()
+
+
+def test_verrechnungskonto_account_type(verrechnungskonto_statement):
+    assert verrechnungskonto_statement.account_type == "MONEYMRKT"
+
+def test_verrechnungskonto_iban(verrechnungskonto_statement):
+    assert verrechnungskonto_statement.account_id == "DE00123456780000077777"
+
+def test_verrechnungskonto_transaction_count(verrechnungskonto_statement):
+    assert len(verrechnungskonto_statement.lines) == 2
+
+def test_verrechnungskonto_zins_divid(verrechnungskonto_statement):
+    txn = verrechnungskonto_statement.lines[0]
+    assert txn.ttype == "DIV"
+    assert txn.amount == Decimal("42.49")
+    assert txn.date == datetime(2025, 12, 4)
+
+def test_verrechnungskonto_effekten(verrechnungskonto_statement):
+    txn = verrechnungskonto_statement.lines[1]
+    assert txn.ttype == "DEBIT"
+    assert txn.amount == Decimal("-42.49")
+    assert txn.date == datetime(2025, 12, 5)
+    assert "NR.0000000000001" in txn.memo
