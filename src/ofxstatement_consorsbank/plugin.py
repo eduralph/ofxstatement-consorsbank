@@ -1,3 +1,18 @@
+# ofxstatement-consorsbank - Consorsbank PDF statement plugin for ofxstatement
+# Copyright (C) 2026  Eduard Ralph
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Consorsbank (BNP Paribas Germany) PDF statement parser for ofxstatement.
 
@@ -135,8 +150,8 @@ TXN_TYPE_MAP: List[tuple] = [
     # ── Internal transfers ─────────────────────────────────────────────────
     ("UMBUCHUNG", "XFER"),  # ★ internal reclassification / transfer
     # ── Interest and dividends ─────────────────────────────────────────────
-    ("ABSCHLUSS", "INT"),  # ★ quarterly interest settlement
-    ("SOLLZINSEN", "INT"),  # ○ overdraft (Dispo) interest
+    ("ABSCHLUSS", "INT"),  # ★ quarterly settlement (interest / Dispo fees on Girokonto)
+    ("SOLLZINSEN", "INT"),  # ○ overdraft (Dispo) interest (alternate label)
     ("KONTOKORRENTZINS", "INT"),  # ○ current account interest settlement
     ("ZINS/DIVID.", "DIV"),  # ★ dividend / interest (Verrechnungskonto)
     ("ZINSEN", "INT"),  # ★ interest

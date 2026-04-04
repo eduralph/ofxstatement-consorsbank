@@ -64,8 +64,8 @@ see `Caveats`_ below.
 | BAREINZAHLUNG        | Cash deposit at counter                       | DEP         | ○  |
 | EINZAHLUNG           | Cash deposit (alternate label)                | DEP         | ○  |
 | UMBUCHUNG            | Internal transfer / reclassification          | XFER        | ★  |
-| ABSCHLUSS            | Quarterly interest settlement                 | INT         | ★  |
-| SOLLZINSEN           | Overdraft (Dispo) interest                    | INT         | ○  |
+| ABSCHLUSS            | Quarterly settlement (interest / Dispo fees)  | INT         | ★  |
+| SOLLZINSEN           | Overdraft (Dispo) interest (alternate label)  | INT         | ○  |
 | KONTOKORRENTZINS     | Current account interest settlement           | INT         | ○  |
 | ZINSEN               | Interest                                      | INT         | ★  |
 | KUPON                | Bond coupon payment                           | INT         | ○  |
@@ -206,3 +206,22 @@ Status
 Tested against Consorsbank Girokonto, Tagesgeldkonto, and Verrechnungskonto
 statements from 2016 to 2026 (200+ files).
 Feedback and pull requests welcome.
+
+
+License
+=======
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see https://www.gnu.org/licenses/.
+
+Copyright (C) 2026  Eduard Ralph
