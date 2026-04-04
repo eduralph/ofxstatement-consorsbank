@@ -33,5 +33,23 @@ Homepage = "https://github.com/kedder/ofxstatement-consorsbank/"
 [project.entry-points."ofxstatement"]
 consorsbank = "ofxstatement_consorsbank.plugin:ConsorsPlugin"
 
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "mypy",
+  "black",
+  "ruff",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+strict = false
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 100
