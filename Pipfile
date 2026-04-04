@@ -3,14 +3,14 @@ name = "pypi"
 url = "https://pypi.org/simple"
 verify_ssl = true
 
+[packages]
+ofxstatement = "*"
+pdfplumber = "*"
+ofxstatement-consorsbank = {editable = true,path = "."}
+
 [dev-packages]
 mypy = "*"
 pytest = "*"
 black = "*"
-exceptiongroup = "*"
+ruff = "*"
 build = "*"
-tomli = "*"
-
-[packages]
-ofxstatement = "*"
-ofxstatement-sample = {editable = true,path = "."}
