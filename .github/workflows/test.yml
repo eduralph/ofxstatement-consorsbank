@@ -38,3 +38,17 @@ jobs:
 
     - name: Ruff
       run: ruff check src tests
+
+  # Single stable job that branch protection can target.
+  # Passes only when all matrix builds pass.
+  all-checks:
+    needs: build
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check all matrix jobs passed
+        run: |
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            echo "One or more matrix jobs failed"
+            exit 1
+          fi
