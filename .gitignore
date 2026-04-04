@@ -12,3 +12,6 @@ eggs
 *.sublime*
 *.log
 *.ofx
+.coverage
+.pytest_cache/
+__pycache__/
