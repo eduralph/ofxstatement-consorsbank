@@ -208,6 +208,8 @@ class ConsorsParser(StatementParser[str]):
         for sl in self._parse_transactions(all_lines):
             stmt.lines.append(sl)
 
+        self._apply_balances(stmt, all_lines)
+
         logger.info(
             "Done: %d transaction(s), account_type=%s, statement=%02d/%d",
             len(stmt.lines),
@@ -223,6 +225,35 @@ class ConsorsParser(StatementParser[str]):
 
     def parse_record(self, line: str) -> Optional[StatementLine]:
         return None
+
+    # ── Balance population ─────────────────────────────────────────────────────
+
+    def _apply_balances(self, stmt: Statement, lines: List[str]) -> None:
+        """Set start/end balance and dates on the statement from balance checkpoints."""
+        checkpoints = []
+        for line in lines:
+            m = BALANCE_RE.search(line)
+            if m:
+                try:
+                    date = _parse_date(m.group(1), self.stmt_year, self.stmt_month)
+                    amount = _parse_amount(m.group(2))
+                    checkpoints.append((date, amount))
+                except (ValueError, Exception):
+                    pass
+
+        if not checkpoints:
+            return
+
+        checkpoints.sort(key=lambda x: x[0])
+        stmt.start_date = checkpoints[0][0]
+        stmt.start_balance = checkpoints[0][1]
+        stmt.end_date = checkpoints[-1][0]
+        stmt.end_balance = checkpoints[-1][1]
+        logger.debug(
+            "Balances: start=%s end=%s",
+            stmt.start_date.strftime("%d.%m.%Y"),
+            stmt.end_date.strftime("%d.%m.%Y"),
+        )
 
     # ── Header parsing ─────────────────────────────────────────────────────────
 
