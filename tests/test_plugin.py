@@ -19,7 +19,7 @@ from ofxstatement_consorsbank.plugin import (
 # Formatted to match the real pdfplumber text extraction layout.
 
 PAGE_1 = """\
-Kontonummer 0200041041
+Kontonummer 0000099999
 Kontotyp Girokonto
 Kontoinhaber Test User
 Dispokredit 5.000,00
@@ -28,60 +28,60 @@ Buchungssaldo alt 1.500,00+
 Buchungssaldo neu 843,42+
 Kontostand zum 31.01.26
 843,42+
-Kontoauszug 1 Konto-Nr. 0200041041 Blatt 1 / 2
-Datum 31.01.26 Bankleitzahl 760 300 80 Kontowährung EUR
-BIC CSDBDE71XXX
-IBAN DE50760300800200041041
+Kontoauszug 1 Konto-Nr. 0000099999 Blatt 1 / 2
+Datum 31.01.26 Bankleitzahl 123 456 78 Kontowährung EUR
+BIC TESTDE71XXX
+IBAN DE00123456780000099999
 Text/Verwendungszweck Datum PNNr Wert Soll Haben
 EURO-UEBERW. 02.01. 8420 01.01. 25,47+
 Counterparty Name
-<CSDBDE71XXX> DE74760300800703880046
+<TESTDE71XXX> DE00111122223333444455
 *** Kontostand zum 01.01. *** 1.525,47+
 LASTSCHRIFT 02.01. 8421 02.01. 349,91-
-Signal Versicherung AG
-<GENODEM1DOR> DE22441600142502511600
-Mandate 59546621 Beitrag 01/2026
-DE81ZZZ00000103174
-59546621SI00001
+Muster Versicherung AG
+<TESTDEM1XXX> DE00222233334444555566
+Mandate 12345678 Beitrag 01/2026
+DE00ZZZ00000000001
+12345678MU00001
 *** Kontostand zum 02.01. *** 1.175,56+
 LASTSCHRIFT 05.01. 8999 05.01. 52,20-
-GOOGLE*WORKSPACE TNGIT CC G
-VISA 06254016 CC GOOGLE.CO
-52,20 EUR 01.01. 10357372
+EXAMPLE*CLOUD SERVICE CC G
+VISA 00000001 CC EXAMPLE.CO
+52,20 EUR 01.01. 10000001
 LASTSCHRIFT 06.01. 8999 06.01. 14,99-
-Microsoft*Xbox Game Pass ms
-VISA 06254016 msbill.info
-14,99 EUR 03.01. 10355734
-4468909950068212
+EXAMPLE*SUBSCRIPTION ms
+VISA 00000001 EXAMPLE.INFO
+14,99 EUR 03.01. 10000002
+4100000000000001
 *** Kontostand zum 06.01. *** 1.108,37+
 """
 
 PAGE_2 = """\
-Kontoauszug 1 Konto-Nr. 0200041041 Blatt 2 / 2
-Datum 31.01.26 Bankleitzahl 760 300 80 Kontowährung EUR
-BIC CSDBDE71XXX
-IBAN DE50760300800200041041
+Kontoauszug 1 Konto-Nr. 0000099999 Blatt 2 / 2
+Datum 31.01.26 Bankleitzahl 123 456 78 Kontowährung EUR
+BIC TESTDE71XXX
+IBAN DE00123456780000099999
 Text/Verwendungszweck Datum PNNr Wert Soll Haben
 GIROCARD 10.01. 8421 10.01. 22,50-
-Bank-Verlag GmbH
-<COBADEFF370> DE72370400440135745802
-BVx260110x0136636595
+Muster Verlag GmbH
+<TESTDEFF370> DE00333344445555666677
+BVx000000x0000000001
 EURO-UEBERW. NR.0000155 14.01. 8422 14.01. 489,72-
 Dentist Practice
-<MEGHDE81XXX> DE38590204009900915010
-X842190980
+<TESTDE81XXX> DE00444455556666777788
+X000000001
 DAUERAUFTRAG NR.0000009 31.01. 8422 31.01. 450,00-
 Landlord Name
-<REVODEB2XXX> DE20100101783587682266
+<TESTDEB2XXX> DE00555566667777888899
 Monthly rent
 GEHALT/RENTE 31.01. 8420 31.01. 3.126,41+
-Staatsoberkasse Bayern
-<BYLADEMMXXX> DE21700500001201190315
-BEZUEGE F. 97152111/202602
+Musterkasse Testland
+<TESTDEMMXXX> DE00666677778888999900
+BEZUEGE F. 00000001/202601
 GEBUEHREN 31.01. 8999 31.01. 0,48-
 2.1% Auslandseinsatzentgelt
-VISA 06254016 Amzn.com/bil
-26,39 USD 12.01. 12875968
+VISA 00000001 EXAMPLE.SHOP
+26,39 USD 12.01. 10000003
 *** Kontostand zum 31.01. *** 843,42+
 """
 
@@ -167,10 +167,10 @@ def test_txn_row_re_no_false_positives():
 # ── Header parsing ─────────────────────────────────────────────────────────────
 
 def test_iban(statement):
-    assert statement.account_id == "DE50760300800200041041"
+    assert statement.account_id == "DE00123456780000099999"
 
 def test_bic(statement):
-    assert statement.bank_id == "CSDBDE71XXX"
+    assert statement.bank_id == "TESTDE71XXX"
 
 def test_account_type_girokonto(statement):
     assert statement.account_type == "CHECKING"
@@ -196,20 +196,20 @@ def test_lastschrift_sepa(statement):
     assert txn.date == datetime(2026, 1, 2)
     assert txn.amount == Decimal("-349.91")
     assert txn.ttype == "DIRECTDEBIT"
-    assert txn.payee == "Signal Versicherung AG"
+    assert txn.payee == "Muster Versicherung AG"
 
 def test_visa_card_typed_as_pos(statement):
     # PNNr 8999 LASTSCHRIFT transactions must become POS, not DIRECTDEBIT
     txn = statement.lines[2]
     assert txn.amount == Decimal("-52.20")
     assert txn.ttype == "POS"
-    assert txn.payee == "GOOGLE*WORKSPACE TNGIT CC G"
+    assert txn.payee == "EXAMPLE*CLOUD SERVICE CC G"
 
 def test_visa_card_with_card_number_line(statement):
     txn = statement.lines[3]
     assert txn.amount == Decimal("-14.99")
     assert txn.ttype == "POS"
-    assert txn.payee == "Microsoft*Xbox Game Pass ms"
+    assert txn.payee == "EXAMPLE*SUBSCRIPTION ms"
 
 def test_girocard(statement):
     txn = statement.lines[4]
