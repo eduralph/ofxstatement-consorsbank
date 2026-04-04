@@ -28,33 +28,53 @@ plugin will log a clear warning and produce no transactions for those files.
 Transaction types handled
 -------------------------
 
-+---------------------+-----------------------------------------------+-----------+
-| Keyword             | Description                                   | OFX type  |
-+=====================+===============================================+===========+
-| LASTSCHRIFT         | Direct debit / SEPA debit                     | DIRECTDEBIT |
-| LASTSCHRIFT (8999)  | VISA card purchase (PNNr 8999)                | POS       |
-| LASTSCHRIFT (ATM)   | Cash withdrawal at another bank's ATM         | ATM       |
-| EURO-UEBERW.        | SEPA credit transfer                          | XFER      |
-| UEBERWEISUNG        | Wire transfer (older label)                   | XFER      |
-| RUECKUEW            | Return transfer (Rücküberweisung)             | XFER      |
-| GIROCARD            | Debit card payment                            | POS       |
-| DAUERAUFTRAG        | Standing order (debit)                        | REPEATPMT |
-| D-LASTSCHRIFT       | Standing order debit                          | REPEATPMT |
-| D-GUTSCHRIFT        | Standing order credit                         | XFER      |
-| GEHALT/RENTE        | Salary / pension credit                       | DIRECTDEP |
-| BEZUEGE             | Salary / benefits (older label)               | DIRECTDEP |
-| GEBUEHREN           | Bank fees                                     | SRVCHG    |
-| ENTGELT             | Charges / fees                                | SRVCHG    |
-| GUTSCHRIFT          | General credit                                | CREDIT    |
-| RETOUREN            | Returned goods / refund                       | CREDIT    |
-| STORNO              | Reversal (direction carried by amount sign)   | CREDIT    |
-| UMBUCHUNG           | Internal transfer / reclassification          | XFER      |
-| ABSCHLUSS           | Quarterly interest settlement                 | INT       |
-| ZINSEN              | Interest                                      | INT       |
-| ZINS/DIVID.         | Dividend / interest (Verrechnungskonto)       | DIV       |
-| EFFEKTEN            | Securities transaction (Verrechnungskonto)    | DEBIT     |
-| VISA                | VISA card transaction                         | POS       |
-+---------------------+-----------------------------------------------+-----------+
+Entries marked ★ are confirmed against real statements (2016–2026).
+Entries marked ○ are best-effort additions for keywords not yet observed —
+see `Caveats`_ below.
+
++----------------------+-----------------------------------------------+-------------+----+
+| Keyword              | Description                                   | OFX type    |    |
++======================+===============================================+=============+====+
+| LASTSCHRIFT          | Direct debit / SEPA debit                     | DIRECTDEBIT | ★  |
+| LASTSCHRIFT (8999)   | VISA card purchase (PNNr 8999)                | POS         | ★  |
+| LASTSCHRIFT (ATM)    | Cash withdrawal at another bank's ATM         | ATM         | ★  |
+| RUECKLASTSCHRIFT     | Returned / bounced direct debit               | DIRECTDEBIT | ○  |
+| EURO-UEBERW.         | SEPA credit transfer                          | XFER        | ★  |
+| ECHTZEITUEBERW.      | Instant payment (SCT Inst)                    | XFER        | ○  |
+| SEPA-UEBERW.         | SEPA transfer (alternate label)               | XFER        | ○  |
+| ONLINE-UEBERW.       | Online banking transfer (older label)         | XFER        | ○  |
+| UEBERWEISUNG         | Wire transfer (older label)                   | XFER        | ★  |
+| RUECKUEW             | Return transfer (Rücküberweisung)             | XFER        | ★  |
+| GIROCARD             | Debit card payment                            | POS         | ★  |
+| VISA                 | VISA card transaction                         | POS         | ★  |
+| DAUERAUFTRAG         | Standing order (debit)                        | REPEATPMT   | ★  |
+| D-LASTSCHRIFT        | Standing order debit                          | REPEATPMT   | ★  |
+| D-GUTSCHRIFT         | Standing order credit                         | XFER        | ★  |
+| GEHALT/RENTE         | Salary / pension credit                       | DIRECTDEP   | ★  |
+| BEZUEGE              | Salary / benefits (older label)               | DIRECTDEP   | ★  |
+| GEBUEHREN            | Bank fees                                     | SRVCHG      | ★  |
+| ENTGELT              | Charges / fees                                | SRVCHG      | ★  |
+| DEPOTGEBUEHREN       | Custody / depot fees                          | SRVCHG      | ○  |
+| PROVISION            | Brokerage commission                          | SRVCHG      | ○  |
+| GUTSCHRIFT           | General credit                                | CREDIT      | ★  |
+| RETOUREN             | Returned goods / refund                       | CREDIT      | ★  |
+| STORNO               | Reversal (direction carried by amount sign)   | CREDIT      | ★  |
+| BARGELDAUSZ.         | ATM cash withdrawal                           | ATM         | ○  |
+| BARAUSZAHLUNG        | ATM cash withdrawal (alternate label)         | ATM         | ○  |
+| BAREINZAHLUNG        | Cash deposit at counter                       | DEP         | ○  |
+| EINZAHLUNG           | Cash deposit (alternate label)                | DEP         | ○  |
+| UMBUCHUNG            | Internal transfer / reclassification          | XFER        | ★  |
+| ABSCHLUSS            | Quarterly settlement (interest / Dispo fees)  | INT         | ★  |
+| SOLLZINSEN           | Overdraft (Dispo) interest (alternate label)  | INT         | ○  |
+| KONTOKORRENTZINS     | Current account interest settlement           | INT         | ○  |
+| ZINSEN               | Interest                                      | INT         | ★  |
+| KUPON                | Bond coupon payment                           | INT         | ○  |
+| ZINS/DIVID.          | Dividend / interest (Verrechnungskonto)       | DIV         | ★  |
+| EFFEKTEN             | Securities purchase (Verrechnungskonto)       | DEBIT       | ★  |
+| WERTPAPIERKAUF       | Securities purchase (alternate label)         | DEBIT       | ○  |
+| WERTPAPIERVERKAUF    | Securities sale proceeds                      | CREDIT      | ○  |
+| TILGUNG              | Bond redemption                               | CREDIT      | ○  |
++----------------------+-----------------------------------------------+-------------+----+
 
 ATM detection
 -------------
@@ -90,6 +110,32 @@ be imported as ``DIRECTDEBIT`` rather than ``ATM``; the memo field will still
 contain the full raw text so you can correct the category in GnuCash manually.
 If you encounter a misclassified withdrawal, please open an issue with the
 (anonymised) continuation-line text so the detection can be extended.
+
+
+.. _Caveats:
+
+Caveats
+-------
+
+The transaction type mappings marked ○ in the table above have been added on
+a best-effort basis using knowledge of the Consorsbank product range and the
+OFX specification.  They have **not** been verified against real statements,
+because the corresponding transaction types were not present in the statements
+used to develop and test this plugin (Girokonto, Tagesgeldkonto, and
+Verrechnungskonto statements from 2016 to 2026).
+
+If you encounter a transaction that is mapped to the wrong OFX type, or one
+that produces an ``Unknown transaction type`` warning, please
+`open an issue <https://github.com/eduralph/ofxstatement-consorsbank/issues>`_
+and include:
+
+* The transaction keyword (first word of the ``Text/Verwendungszweck`` column)
+* The OFX type you would expect
+* The statement type (Girokonto, Tagesgeldkonto, Verrechnungskonto, …)
+
+You do not need to share any amounts, payee names, IBANs, or other personal
+information — the keyword and statement type are sufficient.  Enable debug
+logging (``ofxstatement -d convert …``) to extract the keyword safely.
 
 
 Installation
@@ -160,3 +206,22 @@ Status
 Tested against Consorsbank Girokonto, Tagesgeldkonto, and Verrechnungskonto
 statements from 2016 to 2026 (200+ files).
 Feedback and pull requests welcome.
+
+
+License
+=======
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see https://www.gnu.org/licenses/.
+
+Copyright (C) 2026  Eduard Ralph

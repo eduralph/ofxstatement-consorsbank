@@ -1,3 +1,18 @@
+# ofxstatement-consorsbank - Consorsbank PDF statement plugin for ofxstatement
+# Copyright (C) 2026  Eduard Ralph
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Consorsbank (BNP Paribas Germany) PDF statement parser for ofxstatement.
 
@@ -93,28 +108,59 @@ BANK_PAYEE_RE = re.compile(
 # ── OFX transaction type mapping ───────────────────────────────────────────────
 
 # Maps the start of the Verwendungszweck text to an OFX ttype string.
+#
+# Entries marked ★ are confirmed against real statements (2016–2026).
+# Entries marked ○ are best-effort additions for keywords not yet observed
+# in the wild — if you encounter a misclassified transaction please open an
+# issue at https://github.com/eduralph/ofxstatement-consorsbank/issues
 TXN_TYPE_MAP: List[tuple] = [
-    ("LASTSCHRIFT", "DIRECTDEBIT"),
-    ("EURO-UEBERW.", "XFER"),
-    ("UEBERWEISUNG", "XFER"),  # older label for wire transfer
-    ("RUECKUEW", "XFER"),  # Rücküberweisung – return/reversal of transfer
-    ("GIROCARD", "POS"),
-    ("DAUERAUFTRAG", "REPEATPMT"),
-    ("D-LASTSCHRIFT", "REPEATPMT"),  # standing-order debit
-    ("GEHALT/RENTE", "DIRECTDEP"),
-    ("BEZUEGE", "DIRECTDEP"),  # older label for salary/benefits
-    ("GEBUEHREN", "SRVCHG"),
-    ("ENTGELT", "SRVCHG"),
-    ("RETOUREN", "CREDIT"),  # returned goods / refund credit
-    ("STORNO", "CREDIT"),  # reversal; direction is carried by amount sign
-    ("D-GUTSCHRIFT", "XFER"),
-    ("GUTSCHRIFT", "CREDIT"),
-    ("UMBUCHUNG", "XFER"),
-    ("ABSCHLUSS", "INT"),
-    ("ZINS/DIVID.", "DIV"),
-    ("ZINSEN", "INT"),
-    ("EFFEKTEN", "DEBIT"),
-    ("VISA", "POS"),
+    # ── Direct debits / transfers ──────────────────────────────────────────
+    ("LASTSCHRIFT", "DIRECTDEBIT"),  # ★ direct debit / card via LASTSCHRIFT
+    ("RUECKLASTSCHRIFT", "DIRECTDEBIT"),  # ○ returned / bounced direct debit
+    ("EURO-UEBERW.", "XFER"),  # ★ SEPA credit transfer
+    ("ECHTZEITUEBERW.", "XFER"),  # ○ instant payment (SCT Inst)
+    ("SEPA-UEBERW.", "XFER"),  # ○ SEPA transfer (alternate label)
+    ("ONLINE-UEBERW.", "XFER"),  # ○ online banking transfer (older label)
+    ("UEBERWEISUNG", "XFER"),  # ★ wire transfer (older label)
+    ("RUECKUEW", "XFER"),  # ★ Rücküberweisung – return of transfer
+    # ── Card payments ──────────────────────────────────────────────────────
+    ("GIROCARD", "POS"),  # ★ debit card payment
+    ("VISA", "POS"),  # ★ VISA card transaction
+    # ── Standing orders ────────────────────────────────────────────────────
+    ("DAUERAUFTRAG", "REPEATPMT"),  # ★ standing order (debit)
+    ("D-LASTSCHRIFT", "REPEATPMT"),  # ★ standing order debit
+    ("D-GUTSCHRIFT", "XFER"),  # ★ standing order credit
+    # ── Salary / income ────────────────────────────────────────────────────
+    ("GEHALT/RENTE", "DIRECTDEP"),  # ★ salary or pension
+    ("BEZUEGE", "DIRECTDEP"),  # ★ salary / benefits (older label)
+    # ── Fees and charges ───────────────────────────────────────────────────
+    ("GEBUEHREN", "SRVCHG"),  # ★ bank fees
+    ("ENTGELT", "SRVCHG"),  # ★ charges
+    ("DEPOTGEBUEHREN", "SRVCHG"),  # ○ custody / depot fees
+    ("PROVISION", "SRVCHG"),  # ○ brokerage commission
+    # ── Credits and reversals ──────────────────────────────────────────────
+    ("RETOUREN", "CREDIT"),  # ★ returned goods / refund
+    ("STORNO", "CREDIT"),  # ★ reversal (direction from amount sign)
+    ("GUTSCHRIFT", "CREDIT"),  # ★ general credit
+    # ── Cash ───────────────────────────────────────────────────────────────
+    ("BARGELDAUSZ.", "ATM"),  # ○ ATM cash withdrawal
+    ("BARAUSZAHLUNG", "ATM"),  # ○ ATM cash withdrawal (alternate label)
+    ("BAREINZAHLUNG", "DEP"),  # ○ cash deposit at counter
+    ("EINZAHLUNG", "DEP"),  # ○ cash deposit (alternate label)
+    # ── Internal transfers ─────────────────────────────────────────────────
+    ("UMBUCHUNG", "XFER"),  # ★ internal reclassification / transfer
+    # ── Interest and dividends ─────────────────────────────────────────────
+    ("ABSCHLUSS", "INT"),  # ★ quarterly settlement (interest / Dispo fees on Girokonto)
+    ("SOLLZINSEN", "INT"),  # ○ overdraft (Dispo) interest (alternate label)
+    ("KONTOKORRENTZINS", "INT"),  # ○ current account interest settlement
+    ("ZINS/DIVID.", "DIV"),  # ★ dividend / interest (Verrechnungskonto)
+    ("ZINSEN", "INT"),  # ★ interest
+    ("KUPON", "INT"),  # ○ bond coupon payment
+    # ── Securities (Verrechnungskonto) ─────────────────────────────────────
+    ("EFFEKTEN", "DEBIT"),  # ★ securities purchase
+    ("WERTPAPIERKAUF", "DEBIT"),  # ○ securities purchase (alternate label)
+    ("WERTPAPIERVERKAUF", "CREDIT"),  # ○ securities sale proceeds
+    ("TILGUNG", "CREDIT"),  # ○ bond redemption
 ]
 
 
