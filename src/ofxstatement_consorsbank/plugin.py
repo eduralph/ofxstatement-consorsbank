@@ -34,11 +34,11 @@ logger = logging.getLogger(__name__)
 # The amount at end-of-line is the reliable anchor; the description can be
 # separated from the date by any whitespace (pdfplumber column gap varies).
 TXN_ROW_RE = re.compile(
-    r"^(.+?)\s+"              # Verwendungszweck (lazy – stops at first date)
-    r"(\d{2}\.\d{2}\.)\s+"   # booking date DD.MM.
-    r"(\d+)\s+"              # PNNr
-    r"(\d{2}\.\d{2}\.)\s+"   # value date (Wert) DD.MM.
-    r"([\d.]+,\d{2}[+\-])"   # amount with sign suffix
+    r"^(.+?)\s+"  # Verwendungszweck (lazy – stops at first date)
+    r"(\d{2}\.\d{2}\.)\s+"  # booking date DD.MM.
+    r"(\d+)\s+"  # PNNr
+    r"(\d{2}\.\d{2}\.)\s+"  # value date (Wert) DD.MM.
+    r"([\d.]+,\d{2}[+\-])"  # amount with sign suffix
     r"\s*$"
 )
 
@@ -69,16 +69,18 @@ PAGE_HDR_RE = re.compile(r"^Kontoauszug\s+\d+\s+Konto-Nr\.")
 COL_HDR_RE = re.compile(r"Text/Verwendungszweck")
 
 # Depot/securities statement marker – these documents have no IBAN and are not supported
-DEPOT_HDR_RE = re.compile(r"\b(Depot(?:auszug|-Nr\.?)|Depotinhaber|Wertpapier)", re.IGNORECASE)
+DEPOT_HDR_RE = re.compile(
+    r"\b(Depot(?:auszug|-Nr\.?)|Depotinhaber|Wertpapier)", re.IGNORECASE
+)
 
 # ATM cash withdrawal indicators in LASTSCHRIFT continuation lines:
 #   BLZ counterparty format  < 760 300 80 >   (digits with spaces, never a BIC)
 #   VISA card ATM reference  VISA06254024SB   (SB suffix = Selbstbedienung)
 #   ATM terminal number      SB 30 / SB 4     (bank name + SB <terminal-nr>)
 ATM_INDICATOR_RE = re.compile(
-    r"VISA\d+SB\b"                      # VISA card, SB suffix
+    r"VISA\d+SB\b"  # VISA card, SB suffix
     r"|<\s*\d{3}\s+\d{3}\s+\d{2}\s*>"  # BLZ counterparty < 760 300 80 >
-    r"|\bSB\s+\d+\b"                    # ATM terminal: SB 30, SB 4, …
+    r"|\bSB\s+\d+\b"  # ATM terminal: SB 30, SB 4, …
 )
 
 # For PNNr 8999 transactions where the payee is a bank (ATM withdrawal),
@@ -92,27 +94,27 @@ BANK_PAYEE_RE = re.compile(
 
 # Maps the start of the Verwendungszweck text to an OFX ttype string.
 TXN_TYPE_MAP: List[tuple] = [
-    ("LASTSCHRIFT",   "DIRECTDEBIT"),
-    ("EURO-UEBERW.",  "XFER"),
-    ("UEBERWEISUNG",  "XFER"),       # older label for wire transfer
-    ("RUECKUEW",      "XFER"),       # Rücküberweisung – return/reversal of transfer
-    ("GIROCARD",      "POS"),
-    ("DAUERAUFTRAG",  "REPEATPMT"),
+    ("LASTSCHRIFT", "DIRECTDEBIT"),
+    ("EURO-UEBERW.", "XFER"),
+    ("UEBERWEISUNG", "XFER"),  # older label for wire transfer
+    ("RUECKUEW", "XFER"),  # Rücküberweisung – return/reversal of transfer
+    ("GIROCARD", "POS"),
+    ("DAUERAUFTRAG", "REPEATPMT"),
     ("D-LASTSCHRIFT", "REPEATPMT"),  # standing-order debit
-    ("GEHALT/RENTE",  "DIRECTDEP"),
-    ("BEZUEGE",       "DIRECTDEP"),  # older label for salary/benefits
-    ("GEBUEHREN",     "SRVCHG"),
-    ("ENTGELT",       "SRVCHG"),
-    ("RETOUREN",      "CREDIT"),     # returned goods / refund credit
-    ("STORNO",        "CREDIT"),     # reversal; direction is carried by amount sign
-    ("D-GUTSCHRIFT",  "XFER"),
-    ("GUTSCHRIFT",    "CREDIT"),
-    ("UMBUCHUNG",     "XFER"),
-    ("ABSCHLUSS",     "INT"),
-    ("ZINS/DIVID.",   "DIV"),
-    ("ZINSEN",        "INT"),
-    ("EFFEKTEN",      "DEBIT"),
-    ("VISA",          "POS"),
+    ("GEHALT/RENTE", "DIRECTDEP"),
+    ("BEZUEGE", "DIRECTDEP"),  # older label for salary/benefits
+    ("GEBUEHREN", "SRVCHG"),
+    ("ENTGELT", "SRVCHG"),
+    ("RETOUREN", "CREDIT"),  # returned goods / refund credit
+    ("STORNO", "CREDIT"),  # reversal; direction is carried by amount sign
+    ("D-GUTSCHRIFT", "XFER"),
+    ("GUTSCHRIFT", "CREDIT"),
+    ("UMBUCHUNG", "XFER"),
+    ("ABSCHLUSS", "INT"),
+    ("ZINS/DIVID.", "DIV"),
+    ("ZINSEN", "INT"),
+    ("EFFEKTEN", "DEBIT"),
+    ("VISA", "POS"),
 ]
 
 
@@ -125,6 +127,7 @@ def _txn_type(text: str) -> str:
 
 
 # ── Amount / date helpers ──────────────────────────────────────────────────────
+
 
 def _parse_amount(raw: str) -> Decimal:
     """Parse German-locale amount string, e.g. '1.234,56-' → Decimal('-1234.56')."""
@@ -148,6 +151,7 @@ def _parse_date(ddmm: str, stmt_year: int, stmt_month: int) -> datetime:
 
 # ── Plugin ─────────────────────────────────────────────────────────────────────
 
+
 class ConsorsPlugin(Plugin):
     """Consorsbank (BNP Paribas) PDF statement plugin"""
 
@@ -156,6 +160,7 @@ class ConsorsPlugin(Plugin):
 
 
 # ── Parser ─────────────────────────────────────────────────────────────────────
+
 
 class ConsorsParser(StatementParser[str]):
     """Parse Consorsbank PDF bank statements into OFX."""
@@ -237,7 +242,12 @@ class ConsorsParser(StatementParser[str]):
                     self.iban = re.sub(r"\s+", "", m.group(1))
                     # Mask all but the country code and last 4 chars
                     masked = self.iban[:4] + "…" + self.iban[-4:]
-                    logger.debug("Line %d: IBAN found: %s (%d chars)", line_num, masked, len(self.iban))
+                    logger.debug(
+                        "Line %d: IBAN found: %s (%d chars)",
+                        line_num,
+                        masked,
+                        len(self.iban),
+                    )
 
             if not self.bic:
                 m = BIC_RE.search(line)
@@ -252,7 +262,12 @@ class ConsorsParser(StatementParser[str]):
                     year = year_raw + 2000 if year_raw < 100 else year_raw
                     self.stmt_year = year
                     self.stmt_month = int(m.group(2))
-                    logger.debug("Line %d: statement date: month=%s year=%d", line_num, m.group(2), year)
+                    logger.debug(
+                        "Line %d: statement date: month=%s year=%d",
+                        line_num,
+                        m.group(2),
+                        year,
+                    )
 
             if not found_kontotyp:
                 m = KONTO_TYPE_RE.search(line)
@@ -265,7 +280,12 @@ class ConsorsParser(StatementParser[str]):
                         self.account_type = "MONEYMRKT"
                     else:
                         self.account_type = "CHECKING"
-                    logger.debug("Line %d: Kontotyp: %r → %s", line_num, m.group(1), self.account_type)
+                    logger.debug(
+                        "Line %d: Kontotyp: %r → %s",
+                        line_num,
+                        m.group(1),
+                        self.account_type,
+                    )
 
             if self.iban and self.bic and self.stmt_year and found_kontotyp:
                 logger.debug("All header fields found by line %d", line_num)
@@ -281,18 +301,23 @@ class ConsorsParser(StatementParser[str]):
                 )
             else:
                 logger.warning(
-                    "IBAN not found in %d lines — output will use account_id=UNKNOWN", len(lines)
+                    "IBAN not found in %d lines — output will use account_id=UNKNOWN",
+                    len(lines),
                 )
         if not self.bic and self.iban:
             # Only warn about missing BIC separately if IBAN was found (depot warning covers both)
-            logger.warning("BIC not found in %d lines — bank_id will be unset", len(lines))
+            logger.warning(
+                "BIC not found in %d lines — bank_id will be unset", len(lines)
+            )
         if not self.stmt_year:
             now = datetime.now()
             self.stmt_year = now.year
             self.stmt_month = now.month
             logger.warning(
                 "Statement date not found in %d lines; falling back to %02d/%d",
-                len(lines), self.stmt_month, self.stmt_year,
+                len(lines),
+                self.stmt_month,
+                self.stmt_year,
             )
 
     # ── Transaction parsing ────────────────────────────────────────────────────
@@ -343,15 +368,20 @@ class ConsorsParser(StatementParser[str]):
                 sign = "+" if m_txn.group(5).endswith("+") else "-"
                 logger.debug(
                     "Line %d: txn #%d — keyword=%r date=%s PNNr=%s sign=%s",
-                    line_num, txn_count, keyword,
-                    m_txn.group(2), m_txn.group(3), sign,
+                    line_num,
+                    txn_count,
+                    keyword,
+                    m_txn.group(2),
+                    m_txn.group(3),
+                    sign,
                 )
             elif current_block:
                 # Continuation line belonging to the current transaction
                 current_block.append(line)
                 logger.debug(
                     "Line %d: continuation (block now %d lines)",
-                    line_num, len(current_block),
+                    line_num,
+                    len(current_block),
                 )
             else:
                 # Preamble / header material before the first transaction
@@ -379,15 +409,16 @@ class ConsorsParser(StatementParser[str]):
             logger.warning(
                 "Unexpected: block first line no longer matches TXN_ROW_RE "
                 "(block_lines=%d, first_line_len=%d) — transaction skipped",
-                len(block), len(block[0]),
+                len(block),
+                len(block[0]),
             )
             return None
 
-        desc_text   = m.group(1).strip()
-        booking_str = m.group(2)          # DD.MM.
-        pnnr        = m.group(3)
-        wert_str    = m.group(4)          # DD.MM. (value date)
-        amount_str  = m.group(5)
+        desc_text = m.group(1).strip()
+        booking_str = m.group(2)  # DD.MM.
+        pnnr = m.group(3)
+        wert_str = m.group(4)  # DD.MM. (value date)
+        amount_str = m.group(5)
 
         try:
             amount = _parse_amount(amount_str)
@@ -397,7 +428,8 @@ class ConsorsParser(StatementParser[str]):
             logger.warning(
                 "Amount parse failed: masked_raw=%r len=%d — "
                 "expected German-locale format e.g. X.XXX,XX+ — transaction skipped",
-                masked, len(amount_str),
+                masked,
+                len(amount_str),
             )
             return None
 
@@ -409,7 +441,10 @@ class ConsorsParser(StatementParser[str]):
             logger.warning(
                 "Date parse failed: booking=%r value=%r inferred_year=%d — %s "
                 "— transaction skipped",
-                booking_str, wert_str, self.stmt_year, exc,
+                booking_str,
+                wert_str,
+                self.stmt_year,
+                exc,
             )
             return None
 
@@ -422,19 +457,25 @@ class ConsorsParser(StatementParser[str]):
             ttype = "POS"
             logger.debug("PNNr 8999 on %s: DIRECTDEBIT → POS", date.strftime("%d.%m"))
 
-
         if ttype == "OTHER":
             logger.warning(
                 "Unknown transaction type: keyword=%r date=%s — add to TXN_TYPE_MAP?",
-                keyword, date.strftime("%d.%m.%Y"),
+                keyword,
+                date.strftime("%d.%m.%Y"),
             )
         else:
-            logger.debug("Type: keyword=%r → %s (date=%s)", keyword, ttype, date.strftime("%d.%m"))
+            logger.debug(
+                "Type: keyword=%r → %s (date=%s)",
+                keyword,
+                ttype,
+                date.strftime("%d.%m"),
+            )
 
         if date != date_user:
             logger.debug(
                 "Value date differs: booked=%s valued=%s",
-                date.strftime("%d.%m"), date_user.strftime("%d.%m"),
+                date.strftime("%d.%m"),
+                date_user.strftime("%d.%m"),
             )
 
         # ── Build memo and payee from all lines ───────────────────────────────
@@ -476,7 +517,7 @@ class ConsorsParser(StatementParser[str]):
             amount=amount,
         )
         sl.date_user = date_user
-        sl.ttype = ttype
+        sl.trntype = ttype
         sl.payee = payee
         sl.id = self._make_id(date, amount, memo, pnnr)
 

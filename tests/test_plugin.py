@@ -109,14 +109,18 @@ def statement():
 
 # ── Amount parsing ─────────────────────────────────────────────────────────────
 
+
 def test_parse_amount_credit():
     assert _parse_amount("25,47+") == Decimal("25.47")
+
 
 def test_parse_amount_debit():
     assert _parse_amount("349,91-") == Decimal("-349.91")
 
+
 def test_parse_amount_thousands():
     assert _parse_amount("3.300,23-") == Decimal("-3300.23")
+
 
 def test_parse_amount_large():
     assert _parse_amount("9.000,00+") == Decimal("9000.00")
@@ -124,8 +128,10 @@ def test_parse_amount_large():
 
 # ── Date parsing ───────────────────────────────────────────────────────────────
 
+
 def test_parse_date_same_month():
     assert _parse_date("02.01.", 2026, 1) == datetime(2026, 1, 2)
+
 
 def test_parse_date_year_boundary():
     # December transaction in a January statement → previous year
@@ -133,6 +139,7 @@ def test_parse_date_year_boundary():
 
 
 # ── Transaction row regex ──────────────────────────────────────────────────────
+
 
 def test_txn_row_re_sepa_debit():
     m = TXN_ROW_RE.match("LASTSCHRIFT 02.01. 8421 02.01. 349,91-")
@@ -142,9 +149,11 @@ def test_txn_row_re_sepa_debit():
     assert m.group(4) == "02.01."
     assert m.group(5) == "349,91-"
 
+
 def test_txn_row_re_sepa_credit():
     m = TXN_ROW_RE.match("EURO-UEBERW. 02.01. 8420 01.01. 25,47+")
     assert m and m.group(5) == "25,47+"
+
 
 def test_txn_row_re_with_nr_suffix():
     m = TXN_ROW_RE.match("EURO-UEBERW. NR.0000155 14.01. 8422 14.01. 489,72-")
@@ -152,9 +161,11 @@ def test_txn_row_re_with_nr_suffix():
     m = TXN_ROW_RE.match("DAUERAUFTRAG NR.0000009 30.01. 8422 30.01. 450,00-")
     assert m and "NR.0000009" in m.group(1)
 
+
 def test_txn_row_re_thousands():
     m = TXN_ROW_RE.match("EURO-UEBERW. 07.01. 8420 07.01. 3.300,23-")
     assert m and m.group(5) == "3.300,23-"
+
 
 def test_txn_row_re_no_false_positives():
     assert TXN_ROW_RE.match("Signal Versicherung AG") is None
@@ -166,14 +177,18 @@ def test_txn_row_re_no_false_positives():
 
 # ── Header parsing ─────────────────────────────────────────────────────────────
 
+
 def test_iban(statement):
     assert statement.account_id == "DE00123456780000099999"
+
 
 def test_bic(statement):
     assert statement.bank_id == "TESTDE71XXX"
 
+
 def test_account_type_girokonto(statement):
     assert statement.account_type == "CHECKING"
+
 
 def test_currency(statement):
     assert statement.currency == "EUR"
@@ -181,69 +196,82 @@ def test_currency(statement):
 
 # ── Transaction parsing ────────────────────────────────────────────────────────
 
+
 def test_transaction_count(statement):
     assert len(statement.lines) == 9
+
 
 def test_euro_ueberw_credit(statement):
     txn = statement.lines[0]
     assert txn.date == datetime(2026, 1, 2)
     assert txn.amount == Decimal("25.47")
-    assert txn.ttype == "XFER"
+    assert txn.trntype == "XFER"
     assert txn.payee == "Counterparty Name"
+
 
 def test_lastschrift_sepa(statement):
     txn = statement.lines[1]
     assert txn.date == datetime(2026, 1, 2)
     assert txn.amount == Decimal("-349.91")
-    assert txn.ttype == "DIRECTDEBIT"
+    assert txn.trntype == "DIRECTDEBIT"
     assert txn.payee == "Muster Versicherung AG"
+
 
 def test_visa_card_typed_as_pos(statement):
     # PNNr 8999 LASTSCHRIFT transactions must become POS, not DIRECTDEBIT
     txn = statement.lines[2]
     assert txn.amount == Decimal("-52.20")
-    assert txn.ttype == "POS"
+    assert txn.trntype == "POS"
     assert txn.payee == "EXAMPLE*CLOUD SERVICE CC G"
+
 
 def test_visa_card_with_card_number_line(statement):
     txn = statement.lines[3]
     assert txn.amount == Decimal("-14.99")
-    assert txn.ttype == "POS"
+    assert txn.trntype == "POS"
     assert txn.payee == "EXAMPLE*SUBSCRIPTION ms"
+
 
 def test_girocard(statement):
     txn = statement.lines[4]
-    assert txn.ttype == "POS"
+    assert txn.trntype == "POS"
     assert txn.amount == Decimal("-22.50")
+
 
 def test_euro_ueberw_with_nr(statement):
     txn = statement.lines[5]
     assert txn.amount == Decimal("-489.72")
-    assert txn.ttype == "XFER"
+    assert txn.trntype == "XFER"
     assert "NR.0000155" in txn.memo
+
 
 def test_dauerauftrag(statement):
     txn = statement.lines[6]
-    assert txn.ttype == "REPEATPMT"
+    assert txn.trntype == "REPEATPMT"
     assert txn.amount == Decimal("-450.00")
+
 
 def test_gehalt_rente(statement):
     txn = statement.lines[7]
-    assert txn.ttype == "DIRECTDEP"
+    assert txn.trntype == "DIRECTDEP"
     assert txn.amount == Decimal("3126.41")
+
 
 def test_gebuehren_fee(statement):
     txn = statement.lines[8]
-    assert txn.ttype == "SRVCHG"
+    assert txn.trntype == "SRVCHG"
     assert txn.amount == Decimal("-0.48")
+
 
 def test_all_have_unique_ids(statement):
     ids = [sl.id for sl in statement.lines]
     assert len(set(ids)) == len(ids), "Duplicate transaction IDs"
 
+
 def test_all_have_amounts(statement):
     for sl in statement.lines:
         assert sl.amount is not None
+
 
 def test_all_dates_in_range(statement):
     for sl in statement.lines:
@@ -287,7 +315,7 @@ def test_atm_withdrawal_typed_as_atm():
         stmt = ConsorsParser("fake_atm.pdf").parse()
     assert len(stmt.lines) == 1
     txn = stmt.lines[0]
-    assert txn.ttype == "ATM"
+    assert txn.trntype == "ATM"
     assert txn.amount == Decimal("-50.00")
     assert txn.payee == "MUSTER SPARKASSE TESTSTADT"
 
@@ -301,7 +329,7 @@ def test_atm_withdrawal_sb_terminal_number():
     with patch("pdfplumber.open", return_value=_make_mock_pdf([page])):
         stmt = ConsorsParser("fake_atm_sb.pdf").parse()
     assert len(stmt.lines) == 1
-    assert stmt.lines[0].ttype == "ATM"
+    assert stmt.lines[0].trntype == "ATM"
 
 
 def test_atm_withdrawal_pnnr8999_bank_payee():
@@ -315,17 +343,18 @@ def test_atm_withdrawal_pnnr8999_bank_payee():
         stmt = ConsorsParser("fake_atm_bank.pdf").parse()
     assert len(stmt.lines) == 1
     txn = stmt.lines[0]
-    assert txn.ttype == "ATM"
+    assert txn.trntype == "ATM"
     assert txn.amount == Decimal("-100.00")
 
 
 def test_atm_blz_pattern_not_matched_by_regular_lastschrift(statement):
     # Regular LASTSCHRIFT (direct debit with BIC) must stay DIRECTDEBIT
-    txn = statement.lines[1]   # Signal Versicherung — uses <BIC> IBAN format
-    assert txn.ttype == "DIRECTDEBIT"
+    txn = statement.lines[1]  # Signal Versicherung — uses <BIC> IBAN format
+    assert txn.trntype == "DIRECTDEBIT"
 
 
 # ── Tagesgeldkonto account type ────────────────────────────────────────────────
+
 
 def test_account_type_tagesgeldkonto():
     page = PAGE_1.replace("Kontotyp Girokonto", "Kontotyp Tagesgeldkonto")
@@ -373,15 +402,18 @@ def tagesgeld_statement():
 def test_tagesgeld_account_type(tagesgeld_statement):
     assert tagesgeld_statement.account_type == "SAVINGS"
 
+
 def test_tagesgeld_iban(tagesgeld_statement):
     assert tagesgeld_statement.account_id == "DE00123456780000088888"
+
 
 def test_tagesgeld_transaction_count(tagesgeld_statement):
     assert len(tagesgeld_statement.lines) == 1
 
+
 def test_tagesgeld_d_gutschrift_type(tagesgeld_statement):
     txn = tagesgeld_statement.lines[0]
-    assert txn.ttype == "XFER"
+    assert txn.trntype == "XFER"
     assert txn.amount == Decimal("450.00")
     assert txn.date == datetime(2025, 10, 31)
     assert "NR.0000009" in txn.memo
@@ -421,7 +453,9 @@ TEST.INDEX FUND 1D
 
 @pytest.fixture(scope="module")
 def verrechnungskonto_statement():
-    with patch("pdfplumber.open", return_value=_make_mock_pdf([PAGE_VERRECHNUNGSKONTO])):
+    with patch(
+        "pdfplumber.open", return_value=_make_mock_pdf([PAGE_VERRECHNUNGSKONTO])
+    ):
         parser = ConsorsParser("fake_verrechnungskonto.pdf")
         return parser.parse()
 
@@ -429,21 +463,25 @@ def verrechnungskonto_statement():
 def test_verrechnungskonto_account_type(verrechnungskonto_statement):
     assert verrechnungskonto_statement.account_type == "MONEYMRKT"
 
+
 def test_verrechnungskonto_iban(verrechnungskonto_statement):
     assert verrechnungskonto_statement.account_id == "DE00123456780000077777"
+
 
 def test_verrechnungskonto_transaction_count(verrechnungskonto_statement):
     assert len(verrechnungskonto_statement.lines) == 2
 
+
 def test_verrechnungskonto_zins_divid(verrechnungskonto_statement):
     txn = verrechnungskonto_statement.lines[0]
-    assert txn.ttype == "DIV"
+    assert txn.trntype == "DIV"
     assert txn.amount == Decimal("42.49")
     assert txn.date == datetime(2025, 12, 4)
 
+
 def test_verrechnungskonto_effekten(verrechnungskonto_statement):
     txn = verrechnungskonto_statement.lines[1]
-    assert txn.ttype == "DEBIT"
+    assert txn.trntype == "DEBIT"
     assert txn.amount == Decimal("-42.49")
     assert txn.date == datetime(2025, 12, 5)
     assert "NR.0000000000001" in txn.memo
