@@ -580,11 +580,13 @@ class ConsorsParser(StatementParser[str]):
                     "ATM detected on %s: %s → ATM", date.strftime("%d.%m"), prev
                 )
 
-        # First continuation line is the counterparty / merchant name for all
-        # transaction types (SEPA counterparty, VISA merchant, etc.)
-        payee = cont_lines[0] if cont_lines else desc_text
+        # Payee: "KEYWORD – Counterparty name" so each row is uniquely
+        # identifiable in GnuCash's single-line register view even when
+        # multiple transactions share the same counterparty on the same date.
+        counterparty = cont_lines[0] if cont_lines else ""
+        payee = f"{desc_text} – {counterparty}" if counterparty else desc_text
 
-        memo_parts = [desc_text] + cont_lines
+        memo_parts = cont_lines[1:]
         memo = " | ".join(memo_parts)
 
         sl = StatementLine(
