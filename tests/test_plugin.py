@@ -221,7 +221,7 @@ def test_euro_ueberw_credit(statement):
     assert txn.date == datetime(2026, 1, 2)
     assert txn.amount == Decimal("25.47")
     assert txn.trntype == "XFER"
-    assert txn.payee == "Counterparty Name"
+    assert txn.payee == "EURO-UEBERW. – Counterparty Name"
 
 
 def test_lastschrift_sepa(statement):
@@ -229,7 +229,7 @@ def test_lastschrift_sepa(statement):
     assert txn.date == datetime(2026, 1, 2)
     assert txn.amount == Decimal("-349.91")
     assert txn.trntype == "DIRECTDEBIT"
-    assert txn.payee == "Muster Versicherung AG"
+    assert txn.payee == "LASTSCHRIFT – Muster Versicherung AG"
 
 
 def test_visa_card_typed_as_pos(statement):
@@ -237,14 +237,14 @@ def test_visa_card_typed_as_pos(statement):
     txn = statement.lines[2]
     assert txn.amount == Decimal("-52.20")
     assert txn.trntype == "POS"
-    assert txn.payee == "EXAMPLE*CLOUD SERVICE CC G"
+    assert txn.payee == "LASTSCHRIFT – EXAMPLE*CLOUD SERVICE CC G"
 
 
 def test_visa_card_with_card_number_line(statement):
     txn = statement.lines[3]
     assert txn.amount == Decimal("-14.99")
     assert txn.trntype == "POS"
-    assert txn.payee == "EXAMPLE*SUBSCRIPTION ms"
+    assert txn.payee == "LASTSCHRIFT – EXAMPLE*SUBSCRIPTION ms"
 
 
 def test_girocard(statement):
@@ -257,7 +257,7 @@ def test_euro_ueberw_with_nr(statement):
     txn = statement.lines[5]
     assert txn.amount == Decimal("-489.72")
     assert txn.trntype == "XFER"
-    assert "NR.0000155" in txn.memo
+    assert "NR.0000155" in txn.payee
 
 
 def test_dauerauftrag(statement):
@@ -332,7 +332,7 @@ def test_atm_withdrawal_typed_as_atm():
     txn = stmt.lines[0]
     assert txn.trntype == "ATM"
     assert txn.amount == Decimal("-50.00")
-    assert txn.payee == "MUSTER SPARKASSE TESTSTADT"
+    assert txn.payee == "LASTSCHRIFT – MUSTER SPARKASSE TESTSTADT"
 
 
 def test_atm_withdrawal_sb_terminal_number():
@@ -431,7 +431,7 @@ def test_tagesgeld_d_gutschrift_type(tagesgeld_statement):
     assert txn.trntype == "XFER"
     assert txn.amount == Decimal("450.00")
     assert txn.date == datetime(2025, 10, 31)
-    assert "NR.0000009" in txn.memo
+    assert "NR.0000009" in txn.payee
 
 
 # ── Verrechnungskonto (securities settlement account) ─────────────────────────
@@ -499,4 +499,4 @@ def test_verrechnungskonto_effekten(verrechnungskonto_statement):
     assert txn.trntype == "DEBIT"
     assert txn.amount == Decimal("-42.49")
     assert txn.date == datetime(2025, 12, 5)
-    assert "NR.0000000000001" in txn.memo
+    assert "NR.0000000000001" in txn.payee
