@@ -1,16 +1,25 @@
 # Consorsbank plugin for ofxstatement
 
-Converts **Consorsbank** (BNP Paribas Germany) PDF bank statements to OFX
+Converts **Consorsbank** (BNP Paribas Germany) bank statements to OFX
 format for import into GnuCash or other personal finance software.
 
 [ofxstatement](https://github.com/kedder/ofxstatement) is a tool to convert proprietary bank statements to OFX format.
 
+Two input formats are supported — the format is detected automatically from the file extension:
 
-## Supported statement types
+| Extension | Format | How to export |
+|-----------|--------|---------------|
+| `.pdf`    | PDF statement | Consorsbank portal → Kontoauszüge → Download |
+| `.csv`    | CSV transaction export | Consorsbank portal → Umsätze → Export → CSV |
+
+
+## Supported account types
 
 - **Girokonto** (current account, `account_type=CHECKING`)
 - **Tagesgeldkonto** (savings account, `account_type=SAVINGS`)
 - **Verrechnungskonto** (securities settlement account, `account_type=MONEYMRKT`)
+
+### PDF format
 
 The plugin parses the standard PDF exported from the Consorsbank online portal.
 The PDF must have a text layer (i.e. not a scanned image); all PDFs downloaded
@@ -103,6 +112,57 @@ If you encounter a misclassified withdrawal, please open an issue with the
 (anonymised) continuation-line text so the detection can be extended.
 
 
+### CSV format
+
+The CSV export from the Consorsbank portal is a semicolon-separated file with
+a UTF-8 BOM header. The plugin reads the following columns:
+
+| Column | Description |
+|--------|-------------|
+| Buchung | Booking date (`DD.MM.YYYY`) |
+| Valuta | Value date (`DD.MM.YYYY`) |
+| Sender / Empfänger | Counterparty name |
+| Buchungstext | Transaction type keyword |
+| Verwendungszweck | Payment reference / memo |
+| Betrag | Amount (German locale, e.g. `-1.234,56`) |
+
+The account IBAN is computed from the account number in the file header using
+the Consorsbank BLZ (`76030080`). The end balance and date are read from the
+file header.
+
+CSV transaction type keywords differ from the PDF keywords (German full text
+vs. uppercase abbreviations). The supported keywords are:
+
+| Buchungstext | Description | OFX type |
+|---|---|---|
+| Lastschrift | Direct debit | DIRECTDEBIT |
+| Dauerauftrag | Standing order | REPEATPMT |
+| D-Lastschrift | Standing order debit | REPEATPMT |
+| D-Gutschrift | Standing order credit | XFER |
+| ECHTZEIT EURO-UEBERW. | Instant payment (SCT Inst) | XFER |
+| EURO-Überweisung | SEPA credit transfer | XFER |
+| SEPA-Überweisung | SEPA transfer | XFER |
+| Überweisung | Wire transfer | XFER |
+| Gutschrift | General credit | CREDIT |
+| Retouren | Returned goods / refund | CREDIT |
+| Storno | Reversal | CREDIT |
+| Gehalt/Rente | Salary / pension | DIRECTDEP |
+| Bezüge | Salary / benefits | DIRECTDEP |
+| Gebühren | Bank fees | SRVCHG |
+| Entgelt | Charges / fees | SRVCHG |
+| Abschluss | Quarterly settlement / interest | INT |
+| Zinsen | Interest | INT |
+| Zins/Divid. | Dividend / interest | DIV |
+| Effekten | Securities purchase | DEBIT |
+| Umbuchung | Internal transfer | XFER |
+| Barauszahlung | Cash withdrawal | ATM |
+| Bareinzahlung | Cash deposit | DEP |
+
+ATM detection applies the same heuristics as the PDF parser — checking
+`Verwendungszweck` and counterparty fields for BLZ format, VISA…SB, and
+SB terminal indicators.
+
+
 ## Caveats
 
 The transaction type mappings marked ○ in the table above have been added on
@@ -153,17 +213,18 @@ python -m venv .venv
 
 ## Usage
 
-Single file:
+Single file (PDF or CSV — detected by extension):
 
 ```
 ofxstatement convert -t consorsbank statement.pdf statement.ofx
+ofxstatement convert -t consorsbank Umsatzübersicht.csv statement.ofx
 ```
 
 Multiple files:
 
 ```bash
-for f in *.pdf; do
-    ofxstatement convert -t consorsbank "$f" "${f%.pdf}.ofx"
+for f in *.pdf *.csv; do
+    ofxstatement convert -t consorsbank "$f" "${f%.*}.ofx"
 done
 ```
 
@@ -195,7 +256,8 @@ python -m venv .venv
 ## Status
 
 Tested against Consorsbank Girokonto, Tagesgeldkonto, and Verrechnungskonto
-statements from 2016 to 2026 (200+ files).
+PDF statements from 2016 to 2026 (200+ files), and CSV exports from the
+Consorsbank portal.
 Feedback and pull requests welcome.
 
 
