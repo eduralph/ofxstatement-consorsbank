@@ -23,6 +23,7 @@ import pytest
 
 from ofxstatement_consorsbank.plugin import (
     ConsorsParser,
+    ConsorsCSVParser,
     _parse_amount,
     _parse_date,
     TXN_ROW_RE,
@@ -500,3 +501,127 @@ def test_verrechnungskonto_effekten(verrechnungskonto_statement):
     assert txn.amount == Decimal("-42.49")
     assert txn.date == datetime(2025, 12, 5)
     assert "NR.0000000000001" in txn.payee
+
+
+# ── CSV parser ─────────────────────────────────────────────────────────────────
+
+CSV_SAMPLE = """\
+Konto;Inhaber;Exportdatum
+000099999;Test User, Test User 2;01.01.2026, 00:00:00
+
+Saldo;Währung für Saldo;Datum;max. Verfügungsrahmen;Währung für max. Verfügungsrahmen
+1.500,00;EUR;31.01.2026;5.000,00;EUR
+Buchung ;Valuta;Sender / Empfänger;IBAN;BIC;Buchungstext;Verwendungszweck;Betrag;Währung
+31.01.2026;31.01.2026;Musterfirma GmbH;DE00111122223333444455;TESTDE71XXX;Lastschrift (Einzugsermächtigung);Beitrag 01/2026;-49,00;EUR
+31.01.2026;01.02.2026;Landlord Name;DE00222233334444555566;TESTDEB2XXX;Dauerauftrag;Miete 01/2026;-800,00;EUR
+31.01.2026;31.01.2026;Musterkasse;DE00333344445555666677;TESTDEMMXXX;Gehalt/Rente;BEZUEGE F. 00000001/202601;3.000,00;EUR
+31.01.2026;31.01.2026;;;; Gebühren;Kontoführungsentgelt;-3,90;EUR
+31.01.2026;31.01.2026;;;;Abschluss;Quartalszinsen;-1,50;EUR
+28.01.2026;28.01.2026;Test Shop;DE00444455556666777788;TESTDE81XXX;EURO-Überweisung;Rechnung 2026-001;-120,00;EUR
+"""
+
+
+@pytest.fixture(scope="module")
+def csv_statement(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("csv")
+    f = tmp / "test.csv"
+    f.write_text(CSV_SAMPLE, encoding="utf-8")
+    return ConsorsCSVParser(str(f)).parse()
+
+
+def test_csv_account_id(csv_statement):
+    # IBAN computed from account number 000099999 + Consorsbank BLZ
+    assert csv_statement.account_id.startswith("DE")
+    assert csv_statement.account_id.endswith("000099999")
+
+
+def test_csv_bank_id(csv_statement):
+    assert csv_statement.bank_id == "CSDBDE71XXX"
+
+
+def test_csv_end_balance(csv_statement):
+    assert csv_statement.end_balance == Decimal("1500.00")
+    assert csv_statement.end_date == datetime(2026, 1, 31)
+
+
+def test_csv_transaction_count(csv_statement):
+    assert len(csv_statement.lines) == 6
+
+
+def test_csv_lastschrift(csv_statement):
+    txn = csv_statement.lines[0]
+    assert txn.trntype == "DIRECTDEBIT"
+    assert txn.amount == Decimal("-49.00")
+    assert txn.date == datetime(2026, 1, 31)
+    assert "Musterfirma GmbH" in txn.payee
+    assert txn.memo == "Beitrag 01/2026"
+
+
+def test_csv_dauerauftrag(csv_statement):
+    txn = csv_statement.lines[1]
+    assert txn.trntype == "REPEATPMT"
+    assert txn.amount == Decimal("-800.00")
+    assert txn.date_user == datetime(2026, 2, 1)
+
+
+def test_csv_gehalt(csv_statement):
+    txn = csv_statement.lines[2]
+    assert txn.trntype == "DIRECTDEP"
+    assert txn.amount == Decimal("3000.00")
+
+
+def test_csv_gebuehren(csv_statement):
+    txn = csv_statement.lines[3]
+    assert txn.trntype == "SRVCHG"
+    assert txn.amount == Decimal("-3.90")
+
+
+def test_csv_abschluss(csv_statement):
+    txn = csv_statement.lines[4]
+    assert txn.trntype == "INT"
+    assert txn.amount == Decimal("-1.50")
+
+
+def test_csv_euro_ueberweisung(csv_statement):
+    txn = csv_statement.lines[5]
+    assert txn.trntype == "XFER"
+    assert txn.amount == Decimal("-120.00")
+    assert txn.date == datetime(2026, 1, 28)
+
+
+def test_csv_unique_ids(csv_statement):
+    ids = [sl.id for sl in csv_statement.lines]
+    assert len(set(ids)) == len(ids)
+
+
+def test_csv_plugin_dispatches_csv(tmp_path):
+    f = tmp_path / "test.csv"
+    f.write_text(CSV_SAMPLE, encoding="utf-8")
+    from ofxstatement_consorsbank.plugin import ConsorsPlugin
+
+    parser = ConsorsPlugin(None, {}).get_parser(str(f))
+    assert isinstance(parser, ConsorsCSVParser)
+
+
+def test_csv_plugin_dispatches_pdf():
+    from ofxstatement_consorsbank.plugin import ConsorsPlugin
+
+    parser = ConsorsPlugin(None, {}).get_parser("statement.pdf")
+    assert isinstance(parser, ConsorsParser)
+
+
+# ── Format mismatch error handling ────────────────────────────────────────────
+
+
+def test_csv_parser_rejects_non_csv(tmp_path):
+    f = tmp_path / "statement.csv"
+    f.write_text("Not a Consorsbank CSV file\nsome random content\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="does not look like a Consorsbank CSV"):
+        ConsorsCSVParser(str(f)).parse()
+
+
+def test_pdf_parser_rejects_non_pdf(tmp_path):
+    f = tmp_path / "statement.pdf"
+    f.write_text(CSV_SAMPLE, encoding="utf-8")
+    with pytest.raises(ValueError, match="could not be opened as a PDF"):
+        ConsorsParser(str(f)).parse()

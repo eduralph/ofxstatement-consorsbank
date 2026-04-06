@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ofxstatement-consorsbank"
-version = "0.1.0"
+version = "0.2.0"
 authors = [
   { name="Eduard Ralph" },
 ]
-description = "ofxstatement plugin for Consorsbank (BNP Paribas) PDF statements"
+description = "ofxstatement plugin for Consorsbank (BNP Paribas) PDF and CSV statements"
 readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.9"
 classifiers = [
@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/kedder/ofxstatement-consorsbank/"
+Homepage = "https://github.com/eduralph/ofxstatement-consorsbank/"
 
 [project.entry-points."ofxstatement"]
 consorsbank = "ofxstatement_consorsbank.plugin:ConsorsPlugin"

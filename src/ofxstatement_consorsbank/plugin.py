@@ -14,18 +14,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
-Consorsbank (BNP Paribas Germany) PDF statement parser for ofxstatement.
+Consorsbank (BNP Paribas Germany) statement parser for ofxstatement.
 
-Parses the standard Girokonto / Tagesgeldkonto PDF exported from the
-Consorsbank online portal and produces OFX output suitable for GnuCash.
+Supports two input formats:
+  PDF  – standard statement PDF exported from the Consorsbank portal
+  CSV  – semicolon-separated CSV export from the Consorsbank portal
 
-Transaction row format in the PDF:
-    Text/Verwendungszweck  |  Datum  |  PNNr  |  Wert  |  Soll  |  Haben
-
-Two flavours:
-  SEPA  – starts with a known keyword (LASTSCHRIFT, EURO-UEBERW., …)
-          second line: counterparty BIC + IBAN
-  VISA  – PNNr 8999; second line: merchant / amount EUR date txnid
+File format is detected automatically from the file extension.
 """
 
 import hashlib
@@ -172,6 +167,50 @@ def _txn_type(text: str) -> str:
     return "OTHER"
 
 
+# ── Consorsbank account constants ─────────────────────────────────────────────
+
+CONSORSBANK_BLZ = "76030080"
+CONSORSBANK_BIC = "CSDBDE71XXX"
+
+# ── CSV transaction type map ───────────────────────────────────────────────────
+#
+# Maps the Buchungstext column from the CSV export to OFX ttype.
+# Labels differ from the PDF keywords (German full text vs. uppercase abbreviations).
+
+CSV_TXN_TYPE_MAP: List[tuple] = [
+    ("Lastschrift", "DIRECTDEBIT"),  # direct debit / card via Lastschrift
+    ("Dauerauftrag", "REPEATPMT"),  # standing order
+    ("D-Lastschrift", "REPEATPMT"),  # standing order debit (alternate)
+    ("D-Gutschrift", "XFER"),  # standing order credit
+    ("ECHTZEIT EURO-UEBERW.", "XFER"),  # instant payment (SCT Inst)
+    ("EURO-Überweisung", "XFER"),  # SEPA credit transfer
+    ("SEPA-Überweisung", "XFER"),  # SEPA transfer (alternate label)
+    ("Überweisung", "XFER"),  # wire transfer
+    ("Gutschrift", "CREDIT"),  # general credit
+    ("Retouren", "CREDIT"),  # returned goods / refund
+    ("Storno", "CREDIT"),  # reversal
+    ("Gehalt/Rente", "DIRECTDEP"),  # salary or pension
+    ("Bezüge", "DIRECTDEP"),  # salary / benefits (alternate)
+    ("Gebühren", "SRVCHG"),  # bank fees
+    ("Entgelt", "SRVCHG"),  # charges / fees (alternate)
+    ("Abschluss", "INT"),  # quarterly settlement / interest
+    ("Zinsen", "INT"),  # interest
+    ("Zins/Divid.", "DIV"),  # dividend / interest
+    ("Effekten", "DEBIT"),  # securities purchase
+    ("Umbuchung", "XFER"),  # internal transfer
+    ("Barauszahlung", "ATM"),  # cash withdrawal
+    ("Bareinzahlung", "DEP"),  # cash deposit
+]
+
+
+def _csv_txn_type(buchungstext: str) -> str:
+    lower = buchungstext.lower()
+    for prefix, ttype in CSV_TXN_TYPE_MAP:
+        if lower.startswith(prefix.lower()):
+            return ttype
+    return "OTHER"
+
+
 # ── Amount / date helpers ──────────────────────────────────────────────────────
 
 
@@ -180,6 +219,32 @@ def _parse_amount(raw: str) -> Decimal:
     sign = Decimal(1) if raw.endswith("+") else Decimal(-1)
     normalised = raw[:-1].replace(".", "").replace(",", ".")
     return sign * Decimal(normalised)
+
+
+def _parse_csv_amount(raw: str) -> Decimal:
+    """Parse CSV amount with leading sign, e.g. '-272,50' or '2.838,23'."""
+    raw = raw.strip()
+    if raw.startswith("-"):
+        sign, raw = Decimal(-1), raw[1:]
+    else:
+        sign = Decimal(1)
+    return sign * Decimal(raw.replace(".", "").replace(",", "."))
+
+
+def _make_iban(account_number: str) -> str:
+    """Compute German IBAN for a Consorsbank account number."""
+    ktnr = account_number.strip().zfill(10)
+    bban = CONSORSBANK_BLZ + ktnr  # 18 digits
+    # Append country code as digits (DE=1314) with 00 placeholder check digits
+    remainder = int(bban + "131400") % 97
+    check = 98 - remainder
+    return f"DE{check:02d}{bban}"
+
+
+def _make_id(date: datetime, amount: Decimal, memo: str, ref: str) -> str:
+    """Stable 16-hex-char transaction ID derived from key fields."""
+    raw = f"{date.isoformat()}|{amount}|{ref}|{memo}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
 def _parse_date(ddmm: str, stmt_year: int, stmt_month: int) -> datetime:
@@ -199,9 +264,11 @@ def _parse_date(ddmm: str, stmt_year: int, stmt_month: int) -> datetime:
 
 
 class ConsorsPlugin(Plugin):
-    """Consorsbank (BNP Paribas) PDF statement plugin"""
+    """Consorsbank (BNP Paribas) statement plugin — supports PDF and CSV"""
 
-    def get_parser(self, filename: str) -> "ConsorsParser":
+    def get_parser(self, filename: str) -> "StatementParser":
+        if filename.lower().endswith(".csv"):
+            return ConsorsCSVParser(filename)
         return ConsorsParser(filename)
 
 
@@ -232,7 +299,14 @@ class ConsorsParser(StatementParser[str]):
     def parse(self) -> Statement:
         logger.info("Parsing %s", self.fin)
         all_lines: List[str] = []
-        with pdfplumber.open(self.fin) as pdf:
+        try:
+            pdf_cm = pdfplumber.open(self.fin)
+        except Exception as exc:
+            raise ValueError(
+                f"{self.fin!r} could not be opened as a PDF. "
+                "If this is a CSV export, rename it to .csv."
+            ) from exc
+        with pdf_cm as pdf:
             n_pages = len(pdf.pages)
             for i, page in enumerate(pdf.pages, 1):
                 text = page.extract_text() or ""
@@ -269,7 +343,7 @@ class ConsorsParser(StatementParser[str]):
     def split_records(self) -> Iterator[str]:
         return iter([])
 
-    def parse_record(self, line: str) -> Optional[StatementLine]:
+    def parse_record(self, _: str) -> Optional[StatementLine]:  # required by base class
         return None
 
     # ── Balance population ─────────────────────────────────────────────────────
@@ -598,14 +672,133 @@ class ConsorsParser(StatementParser[str]):
         sl.date_user = date_user
         sl.trntype = ttype
         sl.payee = payee
-        sl.id = self._make_id(date, amount, memo, pnnr)
+        sl.id = _make_id(date, amount, memo, pnnr)
 
         return sl
 
-    # ── Helpers ────────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _make_id(date: datetime, amount: Decimal, memo: str, pnnr: str) -> str:
-        """Stable 16-hex-char transaction ID derived from key fields."""
-        raw = f"{date.isoformat()}|{amount}|{pnnr}|{memo}"
-        return hashlib.sha256(raw.encode()).hexdigest()[:16]
+# ── CSV Parser ─────────────────────────────────────────────────────────────────
+
+
+class ConsorsCSVParser(StatementParser[str]):
+    """Parse Consorsbank CSV export (semicolon-separated) into OFX.
+
+    CSV column layout (row 6+):
+        Buchung ; Valuta ; Sender/Empfänger ; IBAN ; BIC ;
+        Buchungstext ; Verwendungszweck ; Betrag ; Währung
+    """
+
+    fin: str
+
+    def __init__(self, filename: str) -> None:
+        super().__init__()
+        self.fin = filename
+
+    def parse(self) -> Statement:
+        logger.info("Parsing CSV %s", self.fin)
+        # utf-8-sig strips the UTF-8 BOM that Consorsbank prepends to CSV exports
+        with open(self.fin, encoding="utf-8-sig") as f:
+            lines = f.read().splitlines()
+
+        if not lines or not lines[0].startswith("Konto;"):
+            raise ValueError(
+                f"{self.fin!r} does not look like a Consorsbank CSV export "
+                "(expected first line to start with 'Konto;'). "
+                "If this is a PDF, rename it to .pdf."
+            )
+
+        # Row 1: account number ; holder ; export date
+        account_number = lines[1].split(";")[0].strip() if len(lines) > 1 else ""
+        iban = _make_iban(account_number) if account_number else "UNKNOWN"
+        masked = iban[:4] + "…" + iban[-4:] if len(iban) > 8 else iban
+        logger.debug("CSV: account=%s → IBAN %s", account_number, masked)
+
+        # Row 4: balance ; currency ; date ; ...
+        end_balance: Optional[Decimal] = None
+        end_date: Optional[datetime] = None
+        if len(lines) > 4:
+            parts = lines[4].split(";")
+            try:
+                end_balance = _parse_csv_amount(parts[0])
+                end_date = datetime.strptime(parts[2].strip(), "%d.%m.%Y")
+            except (ValueError, InvalidOperation):
+                pass
+
+        stmt = Statement(
+            account_id=iban,
+            bank_id=CONSORSBANK_BIC,
+            currency="EUR",
+            account_type="CHECKING",
+        )
+        stmt.end_balance = end_balance
+        stmt.end_date = end_date
+
+        # Rows 6+: transactions (row index passed to break ID ties for duplicate rows)
+        for row_idx, raw_line in enumerate(lines[6:]):
+            sl = self._parse_row(raw_line, row_idx)
+            if sl is not None:
+                stmt.lines.append(sl)
+
+        logger.info("CSV done: %d transaction(s)", len(stmt.lines))
+        return stmt
+
+    def _parse_row(self, raw_line: str, row_idx: int = 0) -> Optional[StatementLine]:
+        parts = raw_line.split(";")
+        if len(parts) < 9:
+            return None
+        booking_str = parts[0].strip()
+        valuta_str = parts[1].strip()
+        counterparty = parts[2].strip()
+        buchungstext = parts[5].strip()
+        verwendungszweck = parts[6].strip()
+        betrag_str = parts[7].strip()
+
+        if not booking_str or not betrag_str:
+            return None
+
+        try:
+            date = datetime.strptime(booking_str, "%d.%m.%Y")
+            date_user = (
+                datetime.strptime(valuta_str, "%d.%m.%Y") if valuta_str else date
+            )
+            amount = _parse_csv_amount(betrag_str)
+        except (ValueError, InvalidOperation):
+            logger.warning(
+                "CSV row parse failed: booking=%r betrag=%r — skipped",
+                booking_str,
+                betrag_str,
+            )
+            return None
+
+        ttype = _csv_txn_type(buchungstext)
+
+        # ATM detection: same VISA…SB / BLZ / SB-terminal heuristics as PDF
+        if ttype == "DIRECTDEBIT":
+            if ATM_INDICATOR_RE.search(verwendungszweck) or ATM_INDICATOR_RE.search(
+                counterparty
+            ):
+                ttype = "ATM"
+                logger.debug("ATM detected (CSV) on %s", date.strftime("%d.%m"))
+
+        if ttype == "OTHER":
+            logger.warning(
+                "Unknown CSV Buchungstext: %r on %s — add to CSV_TXN_TYPE_MAP?",
+                buchungstext,
+                date.strftime("%d.%m.%Y"),
+            )
+
+        payee = f"{buchungstext} – {counterparty}" if counterparty else buchungstext
+        memo = verwendungszweck
+
+        sl = StatementLine(id=None, date=date, memo=memo, amount=amount)
+        sl.date_user = date_user
+        sl.trntype = ttype
+        sl.payee = payee
+        sl.id = _make_id(date, amount, memo, f"{buchungstext}:{row_idx}")
+        return sl
+
+    def split_records(self) -> Iterator[str]:
+        return iter([])
+
+    def parse_record(self, _: str) -> Optional[StatementLine]:  # required by base class
+        return None
