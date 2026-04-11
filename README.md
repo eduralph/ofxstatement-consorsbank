@@ -131,32 +131,34 @@ the Consorsbank BLZ (`76030080`). The end balance and date are read from the
 file header.
 
 CSV transaction type keywords differ from the PDF keywords (German full text
-vs. uppercase abbreviations). The supported keywords are:
+vs. uppercase abbreviations). Entries marked ★ are confirmed against real
+CSV exports; entries marked ○ are best-effort additions — see
+[Caveats](#caveats) below.
 
-| Buchungstext | Description | OFX type |
-|---|---|---|
-| Lastschrift | Direct debit | DIRECTDEBIT |
-| Dauerauftrag | Standing order | REPEATPMT |
-| D-Lastschrift | Standing order debit | REPEATPMT |
-| D-Gutschrift | Standing order credit | XFER |
-| ECHTZEIT EURO-UEBERW. | Instant payment (SCT Inst) | XFER |
-| EURO-Überweisung | SEPA credit transfer | XFER |
-| SEPA-Überweisung | SEPA transfer | XFER |
-| Überweisung | Wire transfer | XFER |
-| Gutschrift | General credit | CREDIT |
-| Retouren | Returned goods / refund | CREDIT |
-| Storno | Reversal | CREDIT |
-| Gehalt/Rente | Salary / pension | DIRECTDEP |
-| Bezüge | Salary / benefits | DIRECTDEP |
-| Gebühren | Bank fees | SRVCHG |
-| Entgelt | Charges / fees | SRVCHG |
-| Abschluss | Quarterly settlement / interest | INT |
-| Zinsen | Interest | INT |
-| Zins/Divid. | Dividend / interest | DIV |
-| Effekten | Securities purchase | DEBIT |
-| Umbuchung | Internal transfer | XFER |
-| Barauszahlung | Cash withdrawal | ATM |
-| Bareinzahlung | Cash deposit | DEP |
+| Buchungstext | Description | OFX type | |
+|---|---|---|---|
+| Lastschrift | Direct debit | DIRECTDEBIT | ★ |
+| Dauerauftrag | Standing order | REPEATPMT | ★ |
+| D-Lastschrift | Standing order debit | REPEATPMT | ○ |
+| D-Gutschrift | Standing order credit | XFER | ○ |
+| ECHTZEIT EURO-UEBERW. | Instant payment (SCT Inst) | XFER | ★ |
+| EURO-Überweisung | SEPA credit transfer | XFER | ★ |
+| SEPA-Überweisung | SEPA transfer | XFER | ○ |
+| Überweisung | Wire transfer | XFER | ○ |
+| Gutschrift | General credit | CREDIT | ○ |
+| Retouren | Returned goods / refund | CREDIT | ★ |
+| Storno | Reversal | CREDIT | ○ |
+| Gehalt/Rente | Salary / pension | DIRECTDEP | ★ |
+| Bezüge | Salary / benefits | DIRECTDEP | ○ |
+| Gebühren | Bank fees | SRVCHG | ★ |
+| Entgelt | Charges / fees | SRVCHG | ○ |
+| Abschluss | Quarterly settlement / interest | INT | ★ |
+| Zinsen | Interest | INT | ○ |
+| Zins/Divid. | Dividend / interest | DIV | ○ |
+| Effekten | Securities purchase | DEBIT | ○ |
+| Umbuchung | Internal transfer | XFER | ○ |
+| Barauszahlung | Cash withdrawal | ATM | ○ |
+| Bareinzahlung | Cash deposit | DEP | ○ |
 
 ATM detection applies the same heuristics as the PDF parser — checking
 `Verwendungszweck` and counterparty fields for BLZ format, VISA…SB, and
@@ -165,12 +167,13 @@ SB terminal indicators.
 
 ## Caveats
 
-The transaction type mappings marked ○ in the table above have been added on
-a best-effort basis using knowledge of the Consorsbank product range and the
-OFX specification.  They have **not** been verified against real statements,
-because the corresponding transaction types were not present in the statements
-used to develop and test this plugin (Girokonto, Tagesgeldkonto, and
-Verrechnungskonto statements from 2016 to 2026).
+The transaction type mappings marked ○ in the PDF and CSV tables above have
+been added on a best-effort basis using knowledge of the Consorsbank product
+range and the OFX specification.  They have **not** been verified against real
+statements, because the corresponding transaction types were not present in
+the statements used to develop and test this plugin (Girokonto,
+Tagesgeldkonto, and Verrechnungskonto PDF statements from 2016 to 2026, and
+Girokonto CSV exports from 2025 to 2026).
 
 If you encounter a transaction that is mapped to the wrong OFX type, or one
 that produces an `Unknown transaction type` warning, please
