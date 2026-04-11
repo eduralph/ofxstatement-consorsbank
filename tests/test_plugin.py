@@ -21,6 +21,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ofxstatement.exceptions import ParseError
 from ofxstatement_consorsbank.plugin import (
     ConsorsParser,
     ConsorsCSVParser,
@@ -616,12 +617,12 @@ def test_csv_plugin_dispatches_pdf():
 def test_csv_parser_rejects_non_csv(tmp_path):
     f = tmp_path / "statement.csv"
     f.write_text("Not a Consorsbank CSV file\nsome random content\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="does not look like a Consorsbank CSV"):
+    with pytest.raises(ParseError, match="does not look like a Consorsbank CSV"):
         ConsorsCSVParser(str(f)).parse()
 
 
 def test_pdf_parser_rejects_non_pdf(tmp_path):
     f = tmp_path / "statement.pdf"
     f.write_text(CSV_SAMPLE, encoding="utf-8")
-    with pytest.raises(ValueError, match="could not be opened as a PDF"):
+    with pytest.raises(ParseError, match="could not be opened as a PDF"):
         ConsorsParser(str(f)).parse()
