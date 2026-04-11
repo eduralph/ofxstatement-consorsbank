@@ -28,10 +28,11 @@ import logging
 import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import Iterator, List, Optional
+from typing import Iterator, List, Optional, Tuple
 
 import pdfplumber
 
+from ofxstatement.exceptions import ParseError
 from ofxstatement.plugin import Plugin
 from ofxstatement.parser import StatementParser
 from ofxstatement.statement import Statement, StatementLine
@@ -108,7 +109,7 @@ BANK_PAYEE_RE = re.compile(
 # Entries marked ○ are best-effort additions for keywords not yet observed
 # in the wild — if you encounter a misclassified transaction please open an
 # issue at https://github.com/eduralph/ofxstatement-consorsbank/issues
-TXN_TYPE_MAP: List[tuple] = [
+TXN_TYPE_MAP: List[Tuple[str, str]] = [
     # ── Direct debits / transfers ──────────────────────────────────────────
     ("LASTSCHRIFT", "DIRECTDEBIT"),  # ★ direct debit / card via LASTSCHRIFT
     ("RUECKLASTSCHRIFT", "DIRECTDEBIT"),  # ○ returned / bounced direct debit
@@ -159,10 +160,11 @@ TXN_TYPE_MAP: List[tuple] = [
 ]
 
 
-def _txn_type(text: str) -> str:
+def _match_txn_type(text: str, type_map: List[Tuple[str, str]]) -> str:
+    """Match transaction text against a type map using case-insensitive prefix matching."""
     upper = text.upper()
-    for prefix, ttype in TXN_TYPE_MAP:
-        if upper.startswith(prefix):
+    for prefix, ttype in type_map:
+        if upper.startswith(prefix.upper()):
             return ttype
     return "OTHER"
 
@@ -177,7 +179,7 @@ CONSORSBANK_BIC = "CSDBDE71XXX"
 # Maps the Buchungstext column from the CSV export to OFX ttype.
 # Labels differ from the PDF keywords (German full text vs. uppercase abbreviations).
 
-CSV_TXN_TYPE_MAP: List[tuple] = [
+CSV_TXN_TYPE_MAP: List[Tuple[str, str]] = [
     ("Lastschrift", "DIRECTDEBIT"),  # direct debit / card via Lastschrift
     ("Dauerauftrag", "REPEATPMT"),  # standing order
     ("D-Lastschrift", "REPEATPMT"),  # standing order debit (alternate)
@@ -203,12 +205,12 @@ CSV_TXN_TYPE_MAP: List[tuple] = [
 ]
 
 
-def _csv_txn_type(buchungstext: str) -> str:
-    lower = buchungstext.lower()
-    for prefix, ttype in CSV_TXN_TYPE_MAP:
-        if lower.startswith(prefix.lower()):
-            return ttype
-    return "OTHER"
+def _parse_german_amount(raw: str) -> Decimal:
+    """Normalise a German-locale number string (dot=thousands, comma=decimal).
+
+    Returns the absolute Decimal value — callers handle the sign.
+    """
+    return Decimal(raw.replace(".", "").replace(",", "."))
 
 
 # ── Amount / date helpers ──────────────────────────────────────────────────────
@@ -217,8 +219,7 @@ def _csv_txn_type(buchungstext: str) -> str:
 def _parse_amount(raw: str) -> Decimal:
     """Parse German-locale amount string, e.g. '1.234,56-' → Decimal('-1234.56')."""
     sign = Decimal(1) if raw.endswith("+") else Decimal(-1)
-    normalised = raw[:-1].replace(".", "").replace(",", ".")
-    return sign * Decimal(normalised)
+    return sign * _parse_german_amount(raw[:-1])
 
 
 def _parse_csv_amount(raw: str) -> Decimal:
@@ -228,12 +229,16 @@ def _parse_csv_amount(raw: str) -> Decimal:
         sign, raw = Decimal(-1), raw[1:]
     else:
         sign = Decimal(1)
-    return sign * Decimal(raw.replace(".", "").replace(",", "."))
+    return sign * _parse_german_amount(raw)
 
 
 def _make_iban(account_number: str) -> str:
     """Compute German IBAN for a Consorsbank account number."""
     ktnr = account_number.strip().zfill(10)
+    if not ktnr.isdigit():
+        raise ValueError(
+            f"Account number must contain only digits, got {account_number!r}"
+        )
     bban = CONSORSBANK_BLZ + ktnr  # 18 digits
     # Append country code as digits (DE=1314) with 00 placeholder check digits
     remainder = int(bban + "131400") % 97
@@ -302,9 +307,10 @@ class ConsorsParser(StatementParser[str]):
         try:
             pdf_cm = pdfplumber.open(self.fin)
         except Exception as exc:
-            raise ValueError(
+            raise ParseError(
+                0,
                 f"{self.fin!r} could not be opened as a PDF. "
-                "If this is a CSV export, rename it to .csv."
+                "If this is a CSV export, rename it to .csv.",
             ) from exc
         with pdf_cm as pdf:
             n_pages = len(pdf.pages)
@@ -358,7 +364,7 @@ class ConsorsParser(StatementParser[str]):
                     date = _parse_date(m.group(1), self.stmt_year, self.stmt_month)
                     amount = _parse_amount(m.group(2))
                     checkpoints.append((date, amount))
-                except (ValueError, Exception):
+                except (ValueError, InvalidOperation):
                     pass
 
         if not checkpoints:
@@ -599,7 +605,7 @@ class ConsorsParser(StatementParser[str]):
             )
             return None
 
-        ttype = _txn_type(desc_text)
+        ttype = _match_txn_type(desc_text, TXN_TYPE_MAP)
         keyword = desc_text.split()[0]
 
         # PNNr 8999 = VISA card transaction processed as LASTSCHRIFT
@@ -701,17 +707,18 @@ class ConsorsCSVParser(StatementParser[str]):
             lines = f.read().splitlines()
 
         if not lines or not lines[0].startswith("Konto;"):
-            raise ValueError(
+            raise ParseError(
+                0,
                 f"{self.fin!r} does not look like a Consorsbank CSV export "
                 "(expected first line to start with 'Konto;'). "
-                "If this is a PDF, rename it to .pdf."
+                "If this is a PDF, rename it to .pdf.",
             )
 
         # Row 1: account number ; holder ; export date
         account_number = lines[1].split(";")[0].strip() if len(lines) > 1 else ""
         iban = _make_iban(account_number) if account_number else "UNKNOWN"
         masked = iban[:4] + "…" + iban[-4:] if len(iban) > 8 else iban
-        logger.debug("CSV: account=%s → IBAN %s", account_number, masked)
+        logger.debug("CSV: IBAN %s", masked)
 
         # Row 4: balance ; currency ; date ; ...
         end_balance: Optional[Decimal] = None
@@ -770,7 +777,7 @@ class ConsorsCSVParser(StatementParser[str]):
             )
             return None
 
-        ttype = _csv_txn_type(buchungstext)
+        ttype = _match_txn_type(buchungstext, CSV_TXN_TYPE_MAP)
 
         # ATM detection: same VISA…SB / BLZ / SB-terminal heuristics as PDF
         if ttype == "DIRECTDEBIT":
