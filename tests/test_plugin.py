@@ -724,14 +724,13 @@ LASTSCHRIFT 04.01. 8421 XX 04.01. 50,00-
 def test_warn_when_txn_regex_drifts(caplog):
     """If the row layout changes so TXN_ROW_RE matches nothing but the lines
     still *look* like transactions, emit a warning pointing at TXN_ROW_RE."""
-    with caplog.at_level("WARNING"), patch(
-        "pdfplumber.open", return_value=_make_mock_pdf([DRIFTED_TXN_ROW])
+    with (
+        caplog.at_level("WARNING"),
+        patch("pdfplumber.open", return_value=_make_mock_pdf([DRIFTED_TXN_ROW])),
     ):
         stmt = ConsorsParser("fake.pdf").parse()
     assert len(stmt.lines) == 0
-    assert any(
-        "TXN_ROW_RE may be out of date" in r.message for r in caplog.records
-    )
+    assert any("TXN_ROW_RE may be out of date" in r.message for r in caplog.records)
 
 
 NO_BUCHUNGSSALDO = """\
@@ -750,13 +749,12 @@ LASTSCHRIFT 02.01. 8421 02.01. 50,00-
 def test_warn_on_buchungssaldo_fallback(caplog):
     """When the authoritative header labels are absent, a warning must flag
     the silent fallback to running-day checkpoints."""
-    with caplog.at_level("WARNING"), patch(
-        "pdfplumber.open", return_value=_make_mock_pdf([NO_BUCHUNGSSALDO])
+    with (
+        caplog.at_level("WARNING"),
+        patch("pdfplumber.open", return_value=_make_mock_pdf([NO_BUCHUNGSSALDO])),
     ):
         ConsorsParser("fake.pdf").parse()
-    assert any(
-        "'Buchungssaldo alt' not found" in r.message for r in caplog.records
-    )
+    assert any("'Buchungssaldo alt' not found" in r.message for r in caplog.records)
 
 
 INCONSISTENT_BALANCES = """\
@@ -777,8 +775,9 @@ LASTSCHRIFT 02.01. 8421 02.01. 100,00-
 def test_warn_on_balance_inconsistency(caplog):
     """If start + sum(txns) != end, emit a warning with the diff so the user
     has a clue which layer to suspect."""
-    with caplog.at_level("WARNING"), patch(
-        "pdfplumber.open", return_value=_make_mock_pdf([INCONSISTENT_BALANCES])
+    with (
+        caplog.at_level("WARNING"),
+        patch("pdfplumber.open", return_value=_make_mock_pdf([INCONSISTENT_BALANCES])),
     ):
         ConsorsParser("fake.pdf").parse()
     assert any("Balance check failed" in r.message for r in caplog.records)

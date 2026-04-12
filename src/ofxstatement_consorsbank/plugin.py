@@ -121,9 +121,7 @@ BANK_PAYEE_RE = re.compile(
 # breakage of TXN_ROW_RE: a line that contains a DD.MM. date and ends with a
 # signed German amount.  If many of these exist but TXN_ROW_RE matched none,
 # the row layout has drifted and the strict regex needs updating.
-CANDIDATE_TXN_RE = re.compile(
-    r"\d{2}\.\d{2}\..*[\d.]+,\d{2}[+\-]\s*$"
-)
+CANDIDATE_TXN_RE = re.compile(r"\d{2}\.\d{2}\..*[\d.]+,\d{2}[+\-]\s*$")
 
 # ── OFX transaction type mapping ───────────────────────────────────────────────
 
@@ -390,10 +388,7 @@ class ConsorsParser(StatementParser[str]):
         # 2. Consistency: start + sum(amounts) should equal end.  ofxstatement
         # itself raises on this, but surfacing it ourselves gives the user a
         # clearer hint about which piece of the parser to suspect.
-        if (
-            stmt.start_balance is not None
-            and stmt.end_balance is not None
-        ):
+        if stmt.start_balance is not None and stmt.end_balance is not None:
             total = sum(
                 (line.amount for line in stmt.lines if line.amount is not None),
                 Decimal("0"),
