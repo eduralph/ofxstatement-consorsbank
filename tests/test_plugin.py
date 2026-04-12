@@ -626,3 +626,74 @@ def test_pdf_parser_rejects_non_pdf(tmp_path):
     f.write_text(CSV_SAMPLE, encoding="utf-8")
     with pytest.raises(ParseError, match="could not be opened as a PDF"):
         ConsorsParser(str(f)).parse()
+
+
+# ── Header balance parsing (Buchungssaldo alt/neu) ─────────────────────────────
+#
+# The true opening balance is labelled "Buchungssaldo alt" on page 1 and must
+# be preferred over the running-day "*** Kontostand zum ***" checkpoints inside
+# the transaction body — those carry end-of-day balances, not the opening
+# balance.  Reproduces the 2025-05-30 Girokonto bug where start_balance was
+# wrongly reported as the 02.05. end-of-day checkpoint instead of 5.159,06.
+
+BALANCE_HEADER_SPLIT = """\
+Kontonummer 0000099999
+Kontotyp Girokonto
+Soll Haben
+Buchungssaldoalt
+5.159,06+
+Buchungssaldoneu
+6.290,84+
+Kontostandzum30.05.25
+6.290,84+
+Kontoauszug 5 Konto-Nr. 0000099999 Blatt 1 / 1
+Datum 30.05.25 Bankleitzahl 123 456 78 Kontowährung EUR
+BIC TESTDE71XXX
+IBAN DE00123456780000099999
+Text/Verwendungszweck Datum PNNr Wert Soll Haben
+LASTSCHRIFT 02.05. 8421 02.05. 311,22-
+Counterparty
+*** Kontostand zum 02.05. *** 4.847,84+
+"""
+
+
+@pytest.fixture(scope="module")
+def split_balance_statement():
+    with patch("pdfplumber.open", return_value=_make_mock_pdf([BALANCE_HEADER_SPLIT])):
+        return ConsorsParser("fake.pdf").parse()
+
+
+def test_header_start_balance_from_buchungssaldo_alt(split_balance_statement):
+    # Must come from "Buchungssaldo alt", not the 02.05. running checkpoint.
+    assert split_balance_statement.start_balance == Decimal("5159.06")
+
+
+def test_header_end_balance_from_buchungssaldo_neu(split_balance_statement):
+    assert split_balance_statement.end_balance == Decimal("6290.84")
+
+
+def test_header_end_date_from_kontostand_zum(split_balance_statement):
+    assert split_balance_statement.end_date == datetime(2025, 5, 30)
+
+
+BALANCE_HEADER_INLINE = """\
+Kontonummer 0000099999
+Kontotyp Girokonto
+Buchungssaldo alt 1.808,08+
+Buchungssaldo neu 5.013,84+
+Kontostand zum 29.01.16
+5.013,84+
+Kontoauszug 1 Konto-Nr. 0000099999 Blatt 1 / 1
+Datum 29.01.16 Bankleitzahl 123 456 78 Kontowährung EUR
+BIC TESTDE71XXX
+IBAN DE00123456780000099999
+Text/Verwendungszweck Datum PNNr Wert Soll Haben
+"""
+
+
+def test_header_balance_inline_format():
+    # Older PDFs keep label and amount on the same line.
+    with patch("pdfplumber.open", return_value=_make_mock_pdf([BALANCE_HEADER_INLINE])):
+        stmt = ConsorsParser("fake.pdf").parse()
+    assert stmt.start_balance == Decimal("1808.08")
+    assert stmt.end_balance == Decimal("5013.84")

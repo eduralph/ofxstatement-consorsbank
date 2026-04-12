@@ -61,6 +61,22 @@ BALANCE_RE = re.compile(
     r"([\d.]+,\d{2}[+\-])"
 )
 
+# Header balances: "Buchungssaldo alt/neu" (opening/closing) labels on page 1.
+# In older PDFs the label has a space ("Buchungssaldo alt"); in newer PDFs the
+# pdfplumber extract concatenates it ("Buchungssaldoalt").  The amount either
+# follows on the same line or on the next non-empty line.
+BUCHUNGSSALDO_RE = re.compile(
+    r"^Buchungssaldo\s*(alt|neu)\s*(?:([\d.]+,\d{2}[+\-]))?\s*$",
+    re.IGNORECASE,
+)
+AMOUNT_ONLY_RE = re.compile(r"^([\d.]+,\d{2}[+\-])\s*$")
+
+# "Kontostand zum DD.MM.YY" line on page 1 carries the statement closing date.
+# Distinct from the BALANCE_RE checkpoints which appear inside the body.
+HEADER_CLOSING_DATE_RE = re.compile(
+    r"Kontostand\s*zum\s*(\d{2})\.(\d{2})\.(\d{2}|\d{4})"
+)
+
 # Statement header date: first occurrence of DD.MM.YY or DD.MM.YYYY
 STMT_DATE_RE = re.compile(r"\b(\d{2})\.(\d{2})\.(\d{2}|\d{4})\b")
 
@@ -355,7 +371,50 @@ class ConsorsParser(StatementParser[str]):
     # ── Balance population ─────────────────────────────────────────────────────
 
     def _apply_balances(self, stmt: Statement, lines: List[str]) -> None:
-        """Set start/end balance and dates on the statement from balance checkpoints."""
+        """Set start/end balance and dates on the statement.
+
+        Prefers the authoritative "Buchungssaldo alt/neu" labels on page 1 for
+        the opening and closing balances.  Falls back to "*** Kontostand zum ***"
+        running-day checkpoints only when the header labels are absent — those
+        checkpoints carry end-of-day balances, not the true opening balance.
+        """
+        # Header balances: find "Buchungssaldo alt/neu" with amount on the same
+        # line or on the next non-empty line.
+        header_balances: dict = {}
+        for i, line in enumerate(lines):
+            m = BUCHUNGSSALDO_RE.match(line.strip())
+            if not m:
+                continue
+            key = m.group(1).lower()
+            amount_str: Optional[str] = m.group(2)
+            if not amount_str:
+                for j in range(i + 1, min(i + 4, len(lines))):
+                    am = AMOUNT_ONLY_RE.match(lines[j].strip())
+                    if am:
+                        amount_str = am.group(1)
+                        break
+            if amount_str:
+                try:
+                    header_balances[key] = _parse_amount(amount_str)
+                except InvalidOperation:
+                    pass
+
+        # Closing date: "Kontostand zum DD.MM.YY" on page 1.
+        closing_date = None
+        for line in lines:
+            m = HEADER_CLOSING_DATE_RE.search(line)
+            if m:
+                try:
+                    closing_date = _parse_date(
+                        f"{m.group(1)}.{m.group(2)}.{m.group(3)}",
+                        self.stmt_year,
+                        self.stmt_month,
+                    )
+                    break
+                except ValueError:
+                    pass
+
+        # Running-day checkpoints as fallback / opening-date inference.
         checkpoints = []
         for line in lines:
             m = BALANCE_RE.search(line)
@@ -366,20 +425,28 @@ class ConsorsParser(StatementParser[str]):
                     checkpoints.append((date, amount))
                 except (ValueError, InvalidOperation):
                     pass
-
-        if not checkpoints:
-            return
-
         checkpoints.sort(key=lambda x: x[0])
-        stmt.start_date = checkpoints[0][0]
-        stmt.start_balance = checkpoints[0][1]
-        stmt.end_date = checkpoints[-1][0]
-        stmt.end_balance = checkpoints[-1][1]
-        logger.debug(
-            "Balances: start=%s end=%s",
-            stmt.start_date.strftime("%d.%m.%Y"),
-            stmt.end_date.strftime("%d.%m.%Y"),
-        )
+
+        if "alt" in header_balances:
+            stmt.start_balance = header_balances["alt"]
+        elif checkpoints:
+            stmt.start_balance = checkpoints[0][1]
+
+        if "neu" in header_balances:
+            stmt.end_balance = header_balances["neu"]
+        elif checkpoints:
+            stmt.end_balance = checkpoints[-1][1]
+
+        if checkpoints:
+            stmt.start_date = checkpoints[0][0]
+        stmt.end_date = closing_date or (checkpoints[-1][0] if checkpoints else None)
+
+        if stmt.start_date and stmt.end_date:
+            logger.debug(
+                "Balances: start=%s end=%s",
+                stmt.start_date.strftime("%d.%m.%Y"),
+                stmt.end_date.strftime("%d.%m.%Y"),
+            )
 
     # ── Header parsing ─────────────────────────────────────────────────────────
 

@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.2.2] - 2026-04-12
+
+### Fixed
+- Opening balance for PDF statements now read from the authoritative
+  `Buchungssaldo alt` / `Buchungssaldo neu` labels on page 1 instead of
+  the first `*** Kontostand zum DD.MM. ***` running-day checkpoint.  The
+  checkpoint carries the end-of-day balance after that day's transactions,
+  so months with activity on the first day produced a wrong start balance
+  and tripped ofxstatement's `start + sum(txns) == end` consistency check.
+- Statement closing date now read from `Kontostand zum DD.MM.YY` on page 1.
+
+## [0.2.1] - 2026-04-11
+
+### Changed
+- Unified `_txn_type` and `_csv_txn_type` into a single
+  `_match_txn_type(text, type_map)` helper
+- Extracted `_parse_german_amount` for shared German-locale number parsing
+  between PDF and CSV parsers
+- Replaced generic `ValueError` with ofxstatement's framework `ParseError`
+  for format-mismatch errors
+- Tightened type annotations (`List[tuple]` → `List[Tuple[str, str]]`)
+- Added input validation to `_make_iban` for non-digit account numbers
+- Narrowed exception clause in `_apply_balances`
+
+### Documentation
+- Added ★/○ confirmation markers to the CSV transaction type table in the
+  README; 8 `Buchungstext` entries confirmed against real exports
+  (Lastschrift, Dauerauftrag, ECHTZEIT EURO-UEBERW., EURO-Überweisung,
+  Retouren, Gehalt/Rente, Gebühren, Abschluss), remaining 14 stay
+  best-effort (○)
+- Updated Caveats section to reference CSV exports
+
 ## [0.2.0] - 2026-04-06
 
 ### Added
