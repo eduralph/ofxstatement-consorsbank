@@ -11,6 +11,18 @@
   and tripped ofxstatement's `start + sum(txns) == end` consistency check.
 - Statement closing date now read from `Kontostand zum DD.MM.YY` on page 1.
 
+### Added
+- Diagnostic guards for silent format-drift failures:
+  - Warn when `TXN_ROW_RE` matches zero rows but the document contains lines
+    that *look* like transactions (date + signed German amount); the warning
+    includes a sample of unmatched lines to aid diagnosis.
+  - Warn when the `Buchungssaldo alt` / `Buchungssaldo neu` header labels are
+    absent and the parser falls back to running-day checkpoints for the
+    start/end balance.
+  - Cross-check `start_balance + Σtxns == end_balance` after parsing and emit
+    a warning with the diff, pointing at the likely failure sites (row regex,
+    amount parsing, or header balances).
+
 ## [0.2.1] - 2026-04-11
 
 ### Changed
