@@ -394,7 +394,10 @@ class ConsorsParser(StatementParser[str]):
             stmt.start_balance is not None
             and stmt.end_balance is not None
         ):
-            total = sum((line.amount for line in stmt.lines), Decimal("0"))
+            total = sum(
+                (line.amount for line in stmt.lines if line.amount is not None),
+                Decimal("0"),
+            )
             expected_end = stmt.start_balance + total
             diff = stmt.end_balance - expected_end
             if abs(diff) > Decimal("0.005"):
