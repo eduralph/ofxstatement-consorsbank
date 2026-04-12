@@ -697,3 +697,88 @@ def test_header_balance_inline_format():
         stmt = ConsorsParser("fake.pdf").parse()
     assert stmt.start_balance == Decimal("1808.08")
     assert stmt.end_balance == Decimal("5013.84")
+
+
+# ── Silent-failure guards ──────────────────────────────────────────────────────
+#
+# These tests lock in the diagnostic warnings emitted when the parser's
+# assumptions about the PDF format no longer hold.
+
+DRIFTED_TXN_ROW = """\
+Kontonummer 0000099999
+Kontotyp Girokonto
+Buchungssaldo alt 1.000,00+
+Buchungssaldo neu 900,00+
+Kontostand zum 31.01.26
+900,00+
+IBAN DE00123456780000099999
+BIC TESTDE71XXX
+Datum 31.01.26 Bankleitzahl 123 456 78 Kontowährung EUR
+Text/Verwendungszweck Datum PNNr Wert Soll Haben
+LASTSCHRIFT 02.01. 8421 XX 02.01. 50,00-
+LASTSCHRIFT 03.01. 8421 XX 03.01. 50,00-
+LASTSCHRIFT 04.01. 8421 XX 04.01. 50,00-
+"""
+
+
+def test_warn_when_txn_regex_drifts(caplog):
+    """If the row layout changes so TXN_ROW_RE matches nothing but the lines
+    still *look* like transactions, emit a warning pointing at TXN_ROW_RE."""
+    with caplog.at_level("WARNING"), patch(
+        "pdfplumber.open", return_value=_make_mock_pdf([DRIFTED_TXN_ROW])
+    ):
+        stmt = ConsorsParser("fake.pdf").parse()
+    assert len(stmt.lines) == 0
+    assert any(
+        "TXN_ROW_RE may be out of date" in r.message for r in caplog.records
+    )
+
+
+NO_BUCHUNGSSALDO = """\
+Kontonummer 0000099999
+Kontotyp Girokonto
+IBAN DE00123456780000099999
+BIC TESTDE71XXX
+Datum 31.01.26 Bankleitzahl 123 456 78 Kontowährung EUR
+Text/Verwendungszweck Datum PNNr Wert Soll Haben
+LASTSCHRIFT 02.01. 8421 02.01. 50,00-
+*** Kontostand zum 02.01. *** 950,00+
+*** Kontostand zum 31.01. *** 900,00+
+"""
+
+
+def test_warn_on_buchungssaldo_fallback(caplog):
+    """When the authoritative header labels are absent, a warning must flag
+    the silent fallback to running-day checkpoints."""
+    with caplog.at_level("WARNING"), patch(
+        "pdfplumber.open", return_value=_make_mock_pdf([NO_BUCHUNGSSALDO])
+    ):
+        ConsorsParser("fake.pdf").parse()
+    assert any(
+        "'Buchungssaldo alt' not found" in r.message for r in caplog.records
+    )
+
+
+INCONSISTENT_BALANCES = """\
+Kontonummer 0000099999
+Kontotyp Girokonto
+Buchungssaldo alt 1.000,00+
+Buchungssaldo neu 500,00+
+Kontostand zum 31.01.26
+500,00+
+IBAN DE00123456780000099999
+BIC TESTDE71XXX
+Datum 31.01.26 Bankleitzahl 123 456 78 Kontowährung EUR
+Text/Verwendungszweck Datum PNNr Wert Soll Haben
+LASTSCHRIFT 02.01. 8421 02.01. 100,00-
+"""
+
+
+def test_warn_on_balance_inconsistency(caplog):
+    """If start + sum(txns) != end, emit a warning with the diff so the user
+    has a clue which layer to suspect."""
+    with caplog.at_level("WARNING"), patch(
+        "pdfplumber.open", return_value=_make_mock_pdf([INCONSISTENT_BALANCES])
+    ):
+        ConsorsParser("fake.pdf").parse()
+    assert any("Balance check failed" in r.message for r in caplog.records)

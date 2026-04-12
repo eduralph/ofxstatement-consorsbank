@@ -117,6 +117,14 @@ BANK_PAYEE_RE = re.compile(
     r"\b(BANK|SPARKASSE|RAIFFEISEN|VOLKSBANK|SPARDA|KASSE)\b", re.IGNORECASE
 )
 
+# Loose "looks like a transaction row" pattern used only to detect silent
+# breakage of TXN_ROW_RE: a line that contains a DD.MM. date and ends with a
+# signed German amount.  If many of these exist but TXN_ROW_RE matched none,
+# the row layout has drifted and the strict regex needs updating.
+CANDIDATE_TXN_RE = re.compile(
+    r"\d{2}\.\d{2}\..*[\d.]+,\d{2}[+\-]\s*$"
+)
+
 # ── OFX transaction type mapping ───────────────────────────────────────────────
 
 # Maps the start of the Verwendungszweck text to an OFX ttype string.
@@ -351,6 +359,7 @@ class ConsorsParser(StatementParser[str]):
             stmt.lines.append(sl)
 
         self._apply_balances(stmt, all_lines)
+        self._sanity_check(stmt)
 
         logger.info(
             "Done: %d transaction(s), account_type=%s, statement=%02d/%d",
@@ -360,6 +369,47 @@ class ConsorsParser(StatementParser[str]):
             self.stmt_year,
         )
         return stmt
+
+    # ── Post-parse sanity checks ───────────────────────────────────────────────
+
+    def _sanity_check(self, stmt: Statement) -> None:
+        """Emit warnings for the two silent-failure modes we care about:
+        transaction-row regex drift and balance inconsistency."""
+        # 1. Row-regex drift: no transactions parsed but lines looked like rows.
+        candidates = getattr(self, "_unmatched_candidates", [])
+        if not stmt.lines and candidates:
+            sample = candidates[:3]
+            logger.warning(
+                "Parsed 0 transactions but found %d line(s) that look like "
+                "transaction rows — TXN_ROW_RE may be out of date. "
+                "Sample unmatched line(s): %s",
+                len(candidates),
+                " | ".join(repr(s[:100]) for s in sample),
+            )
+
+        # 2. Consistency: start + sum(amounts) should equal end.  ofxstatement
+        # itself raises on this, but surfacing it ourselves gives the user a
+        # clearer hint about which piece of the parser to suspect.
+        if (
+            stmt.start_balance is not None
+            and stmt.end_balance is not None
+        ):
+            total = sum((line.amount for line in stmt.lines), Decimal("0"))
+            expected_end = stmt.start_balance + total
+            diff = stmt.end_balance - expected_end
+            if abs(diff) > Decimal("0.005"):
+                logger.warning(
+                    "Balance check failed: start=%s + sum(%d txns)=%s = %s, "
+                    "but parsed end=%s (diff=%s). Likely causes: a missing "
+                    "transaction (TXN_ROW_RE), a misread amount, or a wrong "
+                    "start/end balance (BUCHUNGSSALDO_RE).",
+                    stmt.start_balance,
+                    len(stmt.lines),
+                    total,
+                    expected_end,
+                    stmt.end_balance,
+                    diff,
+                )
 
     # Required by base class; not used because we override parse() entirely.
     def split_records(self) -> Iterator[str]:
@@ -431,11 +481,24 @@ class ConsorsParser(StatementParser[str]):
             stmt.start_balance = header_balances["alt"]
         elif checkpoints:
             stmt.start_balance = checkpoints[0][1]
+            logger.warning(
+                "Opening balance 'Buchungssaldo alt' not found on page 1 — "
+                "falling back to first '*** Kontostand zum ***' checkpoint "
+                "(%s). This is the end-of-day balance after day-1 transactions, "
+                "not the statement opening balance, and will likely trip the "
+                "start+sum==end consistency check. If this statement format is "
+                "new, BUCHUNGSSALDO_RE needs updating.",
+                stmt.start_balance,
+            )
 
         if "neu" in header_balances:
             stmt.end_balance = header_balances["neu"]
         elif checkpoints:
             stmt.end_balance = checkpoints[-1][1]
+            logger.warning(
+                "Closing balance 'Buchungssaldo neu' not found on page 1 — "
+                "falling back to last '*** Kontostand zum ***' checkpoint."
+            )
 
         if checkpoints:
             stmt.start_date = checkpoints[0][0]
@@ -556,6 +619,7 @@ class ConsorsParser(StatementParser[str]):
         """
         current_block: List[str] = []
         txn_count = 0
+        self._unmatched_candidates: List[str] = []
 
         for line_num, raw_line in enumerate(lines, 1):
             line = raw_line.rstrip()
@@ -608,7 +672,12 @@ class ConsorsParser(StatementParser[str]):
                     len(current_block),
                 )
             else:
-                # Preamble / header material before the first transaction
+                # Preamble / header material before the first transaction.
+                # If the line looks like a transaction row (date + signed amount)
+                # but wasn't matched by TXN_ROW_RE, remember it — if we end with
+                # txn_count == 0, this is evidence the strict regex has drifted.
+                if CANDIDATE_TXN_RE.search(line):
+                    self._unmatched_candidates.append(line)
                 logger.debug(
                     "Line %d: skipped (pre-transaction, len=%d)", line_num, len(line)
                 )
