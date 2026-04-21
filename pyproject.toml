@@ -36,6 +36,7 @@ consorsbank = "ofxstatement_consorsbank.plugin:ConsorsPlugin"
 [project.optional-dependencies]
 dev = [
   "pytest",
+  "pytest-cov",
   "mypy",
   "black",
   "ruff",
@@ -46,6 +47,11 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = [
+    "--cov=ofxstatement_consorsbank",
+    "--cov-report=term-missing",
+    "--no-cov-on-fail",
+]
 
 [tool.mypy]
 strict = false
