@@ -37,6 +37,8 @@ from ofxstatement.plugin import Plugin
 from ofxstatement.parser import StatementParser
 from ofxstatement.statement import Statement, StatementLine
 
+from ofxstatement_consorsbank import plugin_version
+
 logger = logging.getLogger(__name__)
 
 # ── Regex patterns ─────────────────────────────────────────────────────────────
@@ -324,6 +326,10 @@ class ConsorsParser(StatementParser[str]):
     # ── Public API ─────────────────────────────────────────────────────────────
 
     def parse(self) -> Statement:
+        # Version line first so the user reading the convert output can
+        # confirm which install of the plugin actually ran (helps when
+        # several checkouts / pip / pipx installs coexist).
+        logger.info("ofxstatement-consorsbank version %s", plugin_version())
         logger.info("Parsing %s", self.fin)
         all_lines: List[str] = []
         try:
@@ -835,6 +841,10 @@ class ConsorsCSVParser(StatementParser[str]):
         self.fin = filename
 
     def parse(self) -> Statement:
+        # Version line first so the user reading the convert output can
+        # confirm which install of the plugin actually ran (helps when
+        # several checkouts / pip / pipx installs coexist).
+        logger.info("ofxstatement-consorsbank version %s", plugin_version())
         logger.info("Parsing CSV %s", self.fin)
         # utf-8-sig strips the UTF-8 BOM that Consorsbank prepends to CSV exports
         with open(self.fin, encoding="utf-8-sig") as f:

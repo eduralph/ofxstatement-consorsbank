@@ -124,6 +124,16 @@ def statement():
         return parser.parse()
 
 
+def test_pdf_parse_logs_plugin_version_first(caplog):
+    """First INFO line records the plugin version, for install diagnostics."""
+    with patch("pdfplumber.open", return_value=_make_mock_pdf([PAGE_1])):
+        with caplog.at_level("INFO", logger="ofxstatement_consorsbank.plugin"):
+            ConsorsParser("fake.pdf").parse()
+    assert caplog.records, "no log records captured"
+    first = caplog.records[0]
+    assert "ofxstatement-consorsbank version" in first.getMessage()
+
+
 # ── Amount parsing ─────────────────────────────────────────────────────────────
 
 
@@ -528,6 +538,17 @@ def csv_statement(tmp_path_factory):
     f = tmp / "test.csv"
     f.write_text(CSV_SAMPLE, encoding="utf-8")
     return ConsorsCSVParser(str(f)).parse()
+
+
+def test_csv_parse_logs_plugin_version_first(tmp_path, caplog):
+    """First INFO line records the plugin version, for install diagnostics."""
+    f = tmp_path / "test.csv"
+    f.write_text(CSV_SAMPLE, encoding="utf-8")
+    with caplog.at_level("INFO", logger="ofxstatement_consorsbank.plugin"):
+        ConsorsCSVParser(str(f)).parse()
+    assert caplog.records, "no log records captured"
+    first = caplog.records[0]
+    assert "ofxstatement-consorsbank version" in first.getMessage()
 
 
 def test_csv_account_id(csv_statement):
