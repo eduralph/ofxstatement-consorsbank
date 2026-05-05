@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.3] - 2026-05-04
+
+### Added
+- Both PDF and CSV parsers now log the installed plugin version as
+  the first INFO line of `parse()`. Lets a user reading the convert
+  output confirm which install actually ran, without having to drop
+  out and `pip show ofxstatement-consorsbank`. Resolved at runtime
+  via `importlib.metadata.version` with a graceful `"unknown"`
+  fallback.
+
 ## [0.2.2] - 2026-04-12
 
 ### Fixed
