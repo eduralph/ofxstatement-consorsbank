@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.4] - 2026-05-08
+
+### Developer tooling
+- Added `build` and `twine` to `[project.optional-dependencies].dev` so
+  contributors can `python -m build --sdist --wheel` and `twine upload`
+  without an extra `pip install`.
+- Refreshed `Makefile`: typo-free `.PHONY:` declarations (the previous
+  file said `PHONY:` without the leading dot, so the directive did
+  nothing); added a `ruff` target and a `package` target (`python3 -m
+  build --sdist --wheel`); dropped stale references to `bin/pytest`
+  and `setup.py` (the latter was deleted in the pyproject.toml
+  migration). Mirrors the cleanup the upstream paypal-2 maintainer
+  applied to that plugin.
+
 ## [0.2.3] - 2026-05-04
 
 ### Added
