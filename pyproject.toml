@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ofxstatement-consorsbank"
-version = "0.2.3"
+version = "0.2.4"
 authors = [
   { name="Eduard Ralph" },
 ]
@@ -40,6 +40,8 @@ dev = [
   "mypy",
   "black",
   "ruff",
+  "build",
+  "twine",
 ]
 
 [tool.setuptools.packages.find]
